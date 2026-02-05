@@ -154,6 +154,43 @@ applyDistanceMethod(varying NOISE_WorleyPoint *uniform worleyPoints,
     }
 }
 
+// Helper to apply distance method to a single point
+inline void
+applyDistanceMethodToPoint(varying float &distance,
+                           const varying Vec3f &diff,
+                           const int distanceMethod,
+                           const float minkowskiNumber)
+{
+    switch (distanceMethod) {
+        case NOISE_WORLEY_DIST_LINEAR_SQUARED:
+            distance = sqrt(distance);
+            break;
+        case NOISE_WORLEY_DIST_MANHATTAN:
+            distance = abs(diff.x) + abs(diff.y) + abs(diff.z);
+            break;
+        case NOISE_WORLEY_DIST_CHEBYSHEV:
+            distance = max(max(abs(diff.x), abs(diff.y)), abs(diff.z));
+            break;
+        case NOISE_WORLEY_DIST_QUADRATIC:
+            {
+                const float a = diff.x;
+                const float b = diff.y;
+                const float c = diff.z;
+                distance = a * a + a * b + a * c + b * c + b * b + c * c;
+            }
+            break;
+        case NOISE_WORLEY_DIST_MINKOWSKI:
+            {
+                const float mn = minkowskiNumber;
+                const float a = abs(diff.x);
+                const float b = abs(diff.y);
+                const float c = abs(diff.z);
+                distance = pow(pow(a, mn) + pow(b, mn) + pow(c, mn), (1.0f / mn));
+            }
+            break;
+    }
+}
+
 bool
 cmpByLesserDist(const varying NOISE_WorleyPoint * varying x, 
                 const varying NOISE_WorleyPoint * varying y)
@@ -445,7 +482,9 @@ checkCell(const uniform NOISE_Worley * uniform n,
           uniform bool checkOverlap = false,
           const uniform float (*glitterRandomTable)[NOISE_WORLEY_GLITTER_TABLE_SIZE] = NULL,
           const varying float (*flakeStyleRadii)[NOISE_WORLEY_GLITTER_NUM_STYLES] = NULL,
-          const varying float (*flakeStyleCDF)[NOISE_WORLEY_GLITTER_NUM_STYLES] = NULL)
+          const varying float (*flakeStyleCDF)[NOISE_WORLEY_GLITTER_NUM_STYLES] = NULL,
+          const int distanceMethod = NOISE_WORLEY_DIST_LINEAR,
+          const float minkowskiNumber = 0.0f)
 {
     const varying Vec3f pos = noiseSample.position;
     int hash = NOISE_index3D(n->mNoise, ix, iy, iz);
@@ -469,7 +508,11 @@ checkCell(const uniform NOISE_Worley * uniform n,
     // when they are set in the glitter library.
     unsigned int styleIndex;
 
-    const int pointCount = getPointCount(n, hash);
+    // For glitter (when checkOverlap==True) we get multiple points per cell,
+    // but for the standard worley noise pattern we want 1 point per cell.
+    const int pointCount = (n->mVersion == NOISE_WORLEY_V3) ?
+                           (checkOverlap ? getPointCount(n, hash) : 1) :
+                           getPointCount(n, hash);
     for (int i = 0; i < pointCount; i++) {
         position.x = (float)(ix) + 0.5f + (n->mPointsX[hash] - 0.5f) * jitter;
         position.y = (float)(iy) + 0.5f + (n->mPointsY[hash] - 0.5f) * jitter;
@@ -499,6 +542,10 @@ checkCell(const uniform NOISE_Worley * uniform n,
                                                             uv);
         } else {
             distance = dot(diff, diff);
+            // Apply distance method transformation for V3 only
+            if (n->mVersion == NOISE_WORLEY_V3) {
+                applyDistanceMethodToPoint(distance, diff, distanceMethod, minkowskiNumber);
+            }
         }
 
         if (overlap > sEpsilon) {
@@ -556,7 +603,9 @@ worley3D(const uniform NOISE_Worley * uniform n,
          const varying float searchRadius,
          const varying NOISE_WorleySample& noiseSample,
          varying NOISE_WorleyPoint *uniform worleyPoints,
-         const varying float jitter)
+         const varying float jitter,
+         const int distanceMethod = NOISE_WORLEY_DIST_LINEAR,
+         const float minkowskiNumber = 0.0f)
 {
     const Vec3f pos = noiseSample.position;
 
@@ -586,94 +635,121 @@ worley3D(const uniform NOISE_Worley * uniform n,
     const int centerZ = (int)floor(pos.z);
 
     checkCell(n, centerX, centerY, centerZ, noiseSample, worleyPoints,
-              tmpCurrIndex, tmpEndIndex, jitter);
+              tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+              distanceMethod, minkowskiNumber);
 
     // check all of the cubes adjacent to the faces of the center cube
     if ( x2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( y2 < worleyPoints[3].dist)
         checkCell(n, ix, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist)
         checkCell(n, ix, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( z2 < worleyPoints[3].dist)
         checkCell(n, ix, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mz2 < worleyPoints[3].dist)
         checkCell(n, ix, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     
     // check all of the cubes that share edges of the center cubes
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
 
     if ( y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     
     if ( x2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
 
     // check the all of the cubes on the corners of the cetner cube
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix-1, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
 
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(n, ix+1, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurrIndex, tmpEndIndex, jitter);
+                  tmpCurrIndex, tmpEndIndex, jitter, false, NULL, NULL, NULL,
+                  distanceMethod, minkowskiNumber);
 }
 
 varying int
@@ -711,7 +787,8 @@ NOISE_worleySearchPoints(const uniform NOISE_Worley * uniform n,
     if (ixMin == ixMax && iyMin == iyMax && izMin == izMax) {
         checkCell(n, ixMin, iyMin, izMin, noiseSample, tmpWorleyPoints,
                   tmpCurrIndex, tmpEndIndex, jitter,
-                  true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF);
+                  true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF,
+                  NOISE_WORLEY_DIST_LINEAR, 0.0f);
 
         if (n->mVersion == NOISE_WORLEY_V1) {
             sortPoints(tmpWorleyPoints, 0, tmpCurrIndex);
@@ -732,7 +809,8 @@ NOISE_worleySearchPoints(const uniform NOISE_Worley * uniform n,
 
         checkCell(n, centerX, centerY, centerZ, noiseSample, tmpWorleyPoints,
                   tmpCurrIndex, tmpEndIndex, jitter,
-                  true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF);
+                  true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF,
+                  NOISE_WORLEY_DIST_LINEAR, 0.0f);
 
         for (k = 1; k <= maxRadius; k++) {
             for(int ix = centerX - k ; ix <= centerX + k; ++ix) {
@@ -744,7 +822,8 @@ NOISE_worleySearchPoints(const uniform NOISE_Worley * uniform n,
                         if(dot(cornerCenter, cornerCenter) < distanceSphereCube*distanceSphereCube) {
                             checkCell(n, ix, iy, iz, noiseSample, tmpWorleyPoints,
                                       tmpCurrIndex, tmpEndIndex, jitter,
-                                      true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF);
+                                      true, glitterRandomTable, flakeStyleRadii, flakeStyleCDF,
+                                      NOISE_WORLEY_DIST_LINEAR, 0.0f);
                         }
                     }
                 }
@@ -777,12 +856,14 @@ searchPointsFractalLevel(const uniform NOISE_Worley * uniform n,
                          varying NOISE_WorleyPoint *uniform worleyPoints,
                          varying NOISE_WorleyPoint *uniform myWorleyPoints)
 {
-    // Get the points
-    worley3D(n, 1.0f, noiseSample, worleyPoints, jitter);
+    // Get the points - distance method is applied in checkCell for V3, here for V1/V2
+    worley3D(n, 1.0f, noiseSample, worleyPoints, jitter, n->mDistanceMethod, minkowskiNumber);
 
-    // Apply the distance method
-    if (n->mDistanceMethod != NOISE_WORLEY_DIST_LINEAR) {
-        applyDistanceMethod(worleyPoints, n->mDistanceMethod, minkowskiNumber);
+    // Apply the distance method for V1 and V2 (V3 applies it in checkCell)
+    if (n->mVersion != NOISE_WORLEY_V3) {
+        if (n->mDistanceMethod != NOISE_WORLEY_DIST_LINEAR) {
+            applyDistanceMethod(worleyPoints, n->mDistanceMethod, minkowskiNumber);
+        }
     }
 
     // Accumulate worleyPoint data for the first four points

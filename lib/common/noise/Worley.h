@@ -109,7 +109,9 @@ private:
     void worley3D(const float searchRadius,
                   const ispc::NOISE_WorleySample& noiseSample,
                   Worley_PointArray& worleyPoints,
-                  const float jitter) const;
+                  const float jitter,
+                  const int distanceMethod = ispc::NOISE_WORLEY_DIST_LINEAR,
+                  const float minkowskiNumber = 0.0f) const;
 
     // Searches for points and accumulates the data for a single level/octave
     void searchPointsFractalLevel(const int level,
@@ -130,7 +132,9 @@ private:
                    const bool checkOverlap = false,
                    const RandomTable* glitterRandoms = NULL,
                    const Flake_StyleArray* styleRadii = NULL,
-                   const Flake_StyleArray* styleCDF = NULL) const;
+                   const Flake_StyleArray* styleCDF = NULL,
+                   const int distanceMethod = ispc::NOISE_WORLEY_DIST_LINEAR,
+                   const float minkowskiNumber = 0.0f) const;
 
     // Simple utility function for computing overlap between ray footprint and spheres.
     // The normals should be computed by passing in the surface normal

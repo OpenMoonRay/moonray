@@ -12,7 +12,8 @@
 enum NOISE_WorleyVersion
 {
     NOISE_WORLEY_V1 = 0,
-    NOISE_WORLEY_V2 = 1
+    NOISE_WORLEY_V2 = 1,
+    NOISE_WORLEY_V3 = 2
 };
 
 enum NOISE_WorleyConstants {

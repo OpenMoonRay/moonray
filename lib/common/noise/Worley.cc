@@ -193,6 +193,47 @@ applyDistanceMethod(Worley_PointArray& worleyPoints,
     }
 }
 
+// Helper to apply distance method to a single point
+inline void
+applyDistanceMethodToPoint(float& distance,
+                           const Vec3f& diff,
+                           const int distanceMethod,
+                           const float minkowskiNumber)
+{
+    switch (distanceMethod) {
+        case ispc::NOISE_WORLEY_DIST_LINEAR_SQUARED:
+            distance = scene_rdl2::math::sqrt(distance);
+            break;
+        case ispc::NOISE_WORLEY_DIST_MANHATTAN:
+            distance = scene_rdl2::math::abs(diff.x) + scene_rdl2::math::abs(diff.y) + scene_rdl2::math::abs(diff.z);
+            break;
+        case ispc::NOISE_WORLEY_DIST_CHEBYSHEV:
+            distance =
+                scene_rdl2::math::max(scene_rdl2::math::max(scene_rdl2::math::abs(diff.x), scene_rdl2::math::abs(diff.y)),
+                                      scene_rdl2::math::abs(diff.z));
+            break;
+        case ispc::NOISE_WORLEY_DIST_QUADRATIC:
+            {
+                const float a = diff.x;
+                const float b = diff.y;
+                const float c = diff.z;
+                distance = a * a + a * b + a * c + b * c + b * b + c * c;
+            }
+            break;
+        case ispc::NOISE_WORLEY_DIST_MINKOWSKI:
+            {
+                const float mn = minkowskiNumber;
+                const float a = scene_rdl2::math::abs(diff.x);
+                const float b = scene_rdl2::math::abs(diff.y);
+                const float c = scene_rdl2::math::abs(diff.z);
+                distance =
+                    scene_rdl2::math::pow(scene_rdl2::math::pow(a, mn) + scene_rdl2::math::pow(b, mn) +
+                            scene_rdl2::math::pow(c, mn), (1.0f / mn));
+            }
+            break;
+    }
+}
+
 void  
 sortPoints(const Worley_PointArray::iterator tmpWorleyPointsBeg,
            const Worley_PointArray::iterator tmpWorleyPointsCur)
@@ -525,7 +566,9 @@ Worley::checkCell(const int ix, const int iy, const int iz,
                   const bool checkOverlap,
                   const RandomTable* glitterRandoms,
                   const Flake_StyleArray* styleRadii,
-                  const Flake_StyleArray* styleCDF) const
+                  const Flake_StyleArray* styleCDF,
+                  const int distanceMethod,
+                  const float minkowskiNumber) const
 {
     const Vec3f& pos = asCpp(noiseSample.position);
     int hash = index3D(ix, iy, iz);
@@ -549,7 +592,11 @@ Worley::checkCell(const int ix, const int iy, const int iz,
     // when they are set in the glitter library.
     unsigned int styleIndex;
 
-    const int pointCount = getPointCount(hash);
+    // For glitter (when checkOverlap==True) we get multiple points per cell,
+    // but for the standard worley noise pattern we want 1 point per cell.
+    const int pointCount = (mIspcWorley.mVersion == ispc::NOISE_WORLEY_V3) ?
+                           (checkOverlap ? getPointCount(hash) : 1) :
+                           getPointCount(hash);
     for (int i = 0; i < pointCount; i++) {
         position.x = static_cast<float>(ix) + 0.5f + (mIspcWorley.mPointsX[hash] - 0.5f) * jitter;
         position.y = static_cast<float>(iy) + 0.5f + (mIspcWorley.mPointsY[hash] - 0.5f) * jitter;
@@ -578,6 +625,10 @@ Worley::checkCell(const int ix, const int iy, const int iz,
                                                uv);
         } else {
             distance = dot(diff, diff);
+            // Apply distance method transformation for V3 only
+            if (mIspcWorley.mVersion == ispc::NOISE_WORLEY_V3) {
+                applyDistanceMethodToPoint(distance, diff, distanceMethod, minkowskiNumber);
+            }
         }
 
         // TODO: skip this if condition to get all flakes
@@ -636,7 +687,9 @@ void
 Worley::worley3D(const float searchRadius,
                  const ispc::NOISE_WorleySample& noiseSample,
                  Worley_PointArray& worleyPoints,
-                 const float jitter) const
+                 const float jitter,
+                 const int distanceMethod,
+                 const float minkowskiNumber) const
 {
     const Vec3f pos = asCpp(noiseSample.position);
 
@@ -666,94 +719,121 @@ Worley::worley3D(const float searchRadius,
     const int centerZ = static_cast<int>(scene_rdl2::math::floor(pos.z));
 
     checkCell(centerX, centerY, centerZ, noiseSample, worleyPoints,
-              tmpCurItr, tmpEndItr, jitter);
+              tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+              distanceMethod, minkowskiNumber);
 
     // check all of the cubes adjacent to the faces of the center cube
     if ( x2 < worleyPoints[3].dist)
         checkCell(ix-1, iy, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist)
         checkCell(ix+1, iy, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( y2 < worleyPoints[3].dist)
         checkCell(ix, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist)
         checkCell(ix, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( z2 < worleyPoints[3].dist)
         checkCell(ix, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mz2 < worleyPoints[3].dist)
         checkCell(ix, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     
     // check all of the cubes that share edges of the center cubes
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist)
         checkCell(ix-1, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist)
         checkCell(ix-1, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist)
         checkCell(ix+1, iy-1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist)
         checkCell(ix+1, iy+1, iz, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
 
     if ( y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     
     if ( x2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix-1, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix-1, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix+1, iy, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix+1, iy, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
 
     // check the all of the cubes on the corners of the cetner cube
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix-1, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix-1, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix-1, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if ( x2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix-1, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
 
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix+1, iy-1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist &&  y2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix+1, iy-1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist &&  z2 < worleyPoints[3].dist)
         checkCell(ix+1, iy+1, iz-1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
     if (mx2 < worleyPoints[3].dist && my2 < worleyPoints[3].dist && mz2 < worleyPoints[3].dist)
         checkCell(ix+1, iy+1, iz+1, noiseSample, worleyPoints,
-                  tmpCurItr, tmpEndItr, jitter);
+                  tmpCurItr, tmpEndItr, jitter, false, nullptr, nullptr, nullptr,
+                  distanceMethod, minkowskiNumber);
 }
 
 Worley_PointArray::iterator
@@ -820,7 +900,8 @@ Worley::searchPoints(const Flake_StyleArray* styleRadii,
                         if(dot(cornerCenter, cornerCenter) < distanceSphereCube * distanceSphereCube) {
                             checkCell(ix, iy, iz, noiseSample,
                                       tmpWorleyPoints, tmpCurItr, tmpEndItr, jitter, true,
-                                      glitterRandoms, styleRadii, styleCDF);
+                                      glitterRandoms, styleRadii, styleCDF,
+                                      ispc::NOISE_WORLEY_DIST_LINEAR, 0.0f);
                         }
                     }
                 }
@@ -851,12 +932,14 @@ Worley::searchPointsFractalLevel(const int level,
                                  Worley_PointArray& worleyPoints,
                                  Worley_PointArray& myWorleyPoints) const
 {
-    // Get the points
-    worley3D(1.0f, noiseSample, worleyPoints, jitter);
+    // Get the points - distance method is applied in checkCell for V3, here for V1/V2
+    worley3D(1.0f, noiseSample, worleyPoints, jitter, mIspcWorley.mDistanceMethod, minkowskiNumber);
 
-    // Apply the distance method
-    if (mIspcWorley.mDistanceMethod != ispc::NOISE_WORLEY_DIST_LINEAR) {
-        applyDistanceMethod(worleyPoints, mIspcWorley.mDistanceMethod, minkowskiNumber);
+    // Apply the distance method for V1 and V2 (V3 applies it in checkCell)
+    if (mIspcWorley.mVersion != ispc::NOISE_WORLEY_V3) {
+        if (mIspcWorley.mDistanceMethod != ispc::NOISE_WORLEY_DIST_LINEAR) {
+            applyDistanceMethod(worleyPoints, mIspcWorley.mDistanceMethod, minkowskiNumber);
+        }
     }
 
     // Accumulate worleyPoint data for the first four points
