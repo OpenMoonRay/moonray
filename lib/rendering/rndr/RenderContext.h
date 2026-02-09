@@ -544,6 +544,12 @@ public:
     SamplingMode getSamplingMode() const { return mCachedSamplingMode; }
     finline void getAdaptiveSamplingParam(unsigned &minSamples, unsigned &maxSamples, float &targetError) const;
 
+    // Gets screen-space lines representing the current camera orientation, represented by 
+    // navigational axes. The front end is responsible for displaying these lines.
+    void getCameraAxesScreenSpace(scene_rdl2::math::Vec2f& axisXDir,
+                                  scene_rdl2::math::Vec2f& axisYDir,
+                                  scene_rdl2::math::Vec2f& axisZDir) const;
+
     //--------------------
 
     Parser& getParser() { return mParser; }

@@ -3647,6 +3647,25 @@ RenderContext::restoreCachedCameraXform()
     camera->endUpdate();
 }
 
+void
+RenderContext::getCameraAxesScreenSpace(scene_rdl2::math::Vec2f& axisXDir,
+                                        scene_rdl2::math::Vec2f& axisYDir,
+                                        scene_rdl2::math::Vec2f& axisZDir) const
+{
+    const pbr::Camera* camera = mPbrScene->getCamera();
+    
+    // Extract the camera's local axes from the Camera2World transform.
+    // The columns of the rotation part represent the camera's local X, Y, Z axes.
+    const scene_rdl2::math::Mat4d& camera2World = camera->getCamera2World();
+    
+    // Get camera's local axes (columns of the rotation matrix)
+    // We can assume camera2World has orthonormal rotation columns
+    // NOTE: scene_rdl2::math::Mat4d is column-major
+    axisXDir = scene_rdl2::math::Vec2f(camera2World[0][0], camera2World[1][0]);
+    axisYDir = scene_rdl2::math::Vec2f(camera2World[0][1], camera2World[1][1]);
+    axisZDir = scene_rdl2::math::Vec2f(camera2World[0][2], camera2World[1][2]);
+}
+
 } // namespace rndr
 } // namespace moonray
 
