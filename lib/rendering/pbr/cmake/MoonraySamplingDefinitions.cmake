@@ -1,4 +1,4 @@
-# Copyright 2023-2024 DreamWorks Animation LLC
+# Copyright 2023-2026 DreamWorks Animation LLC
 # SPDX-License-Identifier: Apache-2.0
 
 # Build up a copyright year string, eg 2017-2022
@@ -27,8 +27,34 @@ function(writeSamplingDefinitionsHeader defs)
         string(APPEND contents ${def} "\n")
     endforeach()
 
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/SamplingDefinitions.h ${contents})
-    message("Generated SamplingDefinitions.h")
+    # Normalize line endings for platform-independent comparison
+    set(normalizedContents "${contents}")
+    string(REPLACE "\r\n" "\n" normalizedContents "${normalizedContents}")
+    string(REPLACE "\r" "\n" normalizedContents "${normalizedContents}")
+
+    set(headerFile ${CMAKE_CURRENT_BINARY_DIR}/SamplingDefinitions.h)
+    
+    # Only write if content changed to avoid triggering rebuilds
+    set(writeFile TRUE)
+    if(EXISTS ${headerFile})
+        file(READ ${headerFile} existingContents)
+
+        # Normalize line endings for comparison
+        set(existingContentsNormalized "${existingContents}")
+        string(REPLACE "\r\n" "\n" existingContentsNormalized "${existingContentsNormalized}")
+        string(REPLACE "\r" "\n" existingContentsNormalized "${existingContentsNormalized}")
+
+        if(existingContentsNormalized STREQUAL normalizedContents)
+            set(writeFile FALSE)
+        endif()
+    endif()
+    
+    if(writeFile)
+        file(WRITE ${headerFile} ${normalizedContents})
+        message("Generated SamplingDefinitions.h")
+    else()
+        message("SamplingDefinitions.h is up-to-date")
+    endif()
 
     # install(FILES ${CMAKE_CURRENT_BINARY_DIR}/SamplingDefinitions.h
             # DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/moonray/rendering/pbr/sampler)

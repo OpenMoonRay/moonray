@@ -35,8 +35,8 @@ target_link_libraries(${objLib}
 Moonray_ispc_compile_options(${objLib})
 Moonray_link_options(${objLib})
 
-get_target_property(objLibDeps ${objLib} DEPENDENCY)
-if(NOT objLibDeps STREQUAL "")
+get_target_property(objLibDeps ${objLib} ISPC_DEP_TARGET)
+if(objLibDeps)
     add_dependencies(${objLibDeps} 
         SceneRdl2::common_platform
     )

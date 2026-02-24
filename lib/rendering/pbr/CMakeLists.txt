@@ -18,12 +18,7 @@ add_library(${PROJECT_NAME}::${component} ALIAS ${component})
 
 # ----------------------------------------
 # Create a 'core' directory in the build tree for generated files
-add_custom_target(pbr_make_dirs
-    COMMAND
-        ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/core
-    COMMAND
-        ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/sampler
-)
+# Directory creation is now handled by file(MAKE_DIRECTORY) in the make_ispc_target function
 
 # ----------------------------------------
 # We'd like the *_ispc_stubs.h files to be placed into the build
@@ -126,15 +121,14 @@ function(make_ispc_target target sources stubsDestination)
     )
 
     # We need to create the destination directory for the ispc_stubs.h
-    # files before building the objects
-    add_custom_target(${target}_make_dir COMMAND
-        ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${stubsDestination})
+    # files before building the objects. Using file(MAKE_DIRECTORY) in CMake
+    # execution phase ensures directory exists without forcing a rebuild
+    # every time (unlike add_custom_target which always executes)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${stubsDestination})
 
-    add_dependencies(${target} ${target}_make_dir)
-
-    get_target_property(objLibDeps ${target} DEPENDENCY)
-    if(NOT objLibDeps STREQUAL "")
-        add_dependencies(${objLibDeps} 
+    get_target_property(objLibDeps ${target} ISPC_DEP_TARGET)
+    if(objLibDeps)
+        add_dependencies(${objLibDeps}
             embree
             ${PROJECT_NAME}::common_mcrt_macros
             ${PROJECT_NAME}::rendering_lpe
@@ -147,7 +141,6 @@ function(make_ispc_target target sources stubsDestination)
             SceneRdl2::math_ispc
             SceneRdl2::render_util
             SceneRdl2::scene_rdl2
-            ${target}_make_dir
         )
     endif()
 endfunction()
@@ -223,19 +216,21 @@ if(${MOONRAY_SAMPLING} MATCHES "^PMJ02$")
     set(temp_pmj02_best_candidate ${CMAKE_CURRENT_BINARY_DIR}/sampler/pmj02_best_candidate_4096.bin.tmp)
     set(bin_pmj02_best_candidate ${CMAKE_CURRENT_BINARY_DIR}/sampler/pmj02_best_candidate_4096.bin)
 
-    # The OUTPUT_FILE in the below COMMAND must exist before we attempt to write to it.
-    # Also, We need to create the 'sampler' directory for file (if it doesn't yet exist)
-    # before we atempt to TOUCH it
+    # We need to create the 'sampler' directory for file (if it doesn't yet exist)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/sampler)
-    file(TOUCH ${temp_pmj02_best_candidate})
-
-    execute_process(COMMAND ${CMAKE_COMMAND} -E cat ${chunks}
-                    OUTPUT_FILE ${temp_pmj02_best_candidate}
-                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                    COMMAND_ERROR_IS_FATAL ANY)
-
-    # Copy to final .bin file
-    execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different ${temp_pmj02_best_candidate} ${bin_pmj02_best_candidate})
+    
+    # Concatenate chunks at build time (not configure time) using cross-platform script
+    add_custom_command(
+        OUTPUT ${bin_pmj02_best_candidate}
+        DEPENDS ${chunks}
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_FILES="${chunks}"
+            -DOUTPUT_FILE="${temp_pmj02_best_candidate}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ConcatenateBinaryFiles.cmake
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${temp_pmj02_best_candidate} ${bin_pmj02_best_candidate}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Concatenating PMJ02 sampling binary chunks"
+    )
 
     # Add to list for objcopy ( .bin -> .o )
     list(APPEND binFiles
@@ -293,9 +288,7 @@ foreach(binFile ${binFiles})
     list(APPEND samplerObjs ${objFile})
 endforeach()
 
-# --------------------------------------------------------------
-
-add_dependencies(${component} pbr_make_dirs)
+# Directory creation handled by file(MAKE_DIRECTORY) in make_ispc_target
 
 get_target_property(rendering_pbr_ispc_00_target_objects rendering_pbr_ispc_00 TARGET_OBJECTS)
 get_target_property(rendering_pbr_ispc_01_target_objects rendering_pbr_ispc_01 TARGET_OBJECTS)
@@ -416,15 +409,18 @@ target_link_libraries(${component}
         TBB::tbb
 )
 
-get_target_property(objLibDeps_00 rendering_pbr_ispc_00 DEPENDENCY)
-get_target_property(objLibDeps_01 rendering_pbr_ispc_01 DEPENDENCY)
-get_target_property(objLibDeps_02 rendering_pbr_ispc_02 DEPENDENCY)
-get_target_property(objLibDeps_03 rendering_pbr_ispc_03 DEPENDENCY)
-get_target_property(objLibDeps_04 rendering_pbr_ispc_04 DEPENDENCY)
-get_target_property(objLibDeps_05 rendering_pbr_ispc_05 DEPENDENCY)
+get_target_property(objLibDeps_00 rendering_pbr_ispc_00 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_01 rendering_pbr_ispc_01 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_02 rendering_pbr_ispc_02 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_03 rendering_pbr_ispc_03 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_04 rendering_pbr_ispc_04 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_05 rendering_pbr_ispc_05 ISPC_DEP_TARGET)
 
-if(NOT objLibDeps_00 STREQUAL "")
-    add_dependencies(${objLibDeps_00}
+# Dependencies established by target_link_libraries() in make_ispc_target().
+# Serial dependencies (01-05 depending on 00) removed to enable parallel ISPC compilation.
+if(objLibDeps_00)
+    add_dependencies(
+        ${objLibDeps_00}
         ${PROJECT_NAME}::common_mcrt_macros
         ${PROJECT_NAME}::rendering_lpe
         ${PROJECT_NAME}::rendering_mcrt_common
@@ -437,14 +433,9 @@ if(NOT objLibDeps_00 STREQUAL "")
         SceneRdl2::render_util
         SceneRdl2::scene_rdl2
     )
-    add_dependencies(${objLibDeps_01} ${objLibDeps_00})
-    add_dependencies(${objLibDeps_02} ${objLibDeps_00})
-    add_dependencies(${objLibDeps_03} ${objLibDeps_00})
-    add_dependencies(${objLibDeps_04} ${objLibDeps_00})
-    add_dependencies(${objLibDeps_05} ${objLibDeps_00})
 endif()
 
-add_dependencies(${component} 
+add_dependencies(${component}
         rendering_pbr_ispc_00
         rendering_pbr_ispc_01
         rendering_pbr_ispc_02

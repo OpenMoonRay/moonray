@@ -43,8 +43,8 @@ target_link_libraries(${objLib}
         SceneRdl2::scene_rdl2
 )
 
-get_target_property(objLibDeps ${objLib} DEPENDENCY)
-if(NOT objLibDeps STREQUAL "")
+get_target_property(objLibDeps ${objLib} ISPC_DEP_TARGET)
+if(objLibDeps)
     add_dependencies(${objLibDeps} 
         SceneRdl2::common_fb_util
         SceneRdl2::common_platform

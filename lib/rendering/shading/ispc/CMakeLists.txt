@@ -103,8 +103,8 @@ SConscript_Stub(shading_eval_ispc)
 Moonray_ispc_compile_options(shading_eval_ispc)
 Moonray_link_options(shading_eval_ispc)
 
-get_target_property(objLibDeps shading_eval_ispc DEPENDENCY)
-if(NOT objLibDeps STREQUAL "")
+get_target_property(objLibDeps shading_eval_ispc ISPC_DEP_TARGET)
+if(objLibDeps)
     add_dependencies(${objLibDeps}
         ${PROJECT_NAME}::texturing_sampler
         SceneRdl2::common_platform
@@ -233,6 +233,8 @@ function(make_ispc_target target sources stubsDestination)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
             $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+            $<TARGET_PROPERTY:SceneRdl2::common_platform,INTERFACE_INCLUDE_DIRECTORIES>
+            $<TARGET_PROPERTY:SceneRdl2::scene_rdl2,INTERFACE_INCLUDE_DIRECTORIES>
     )
 
     target_link_libraries(${target}
@@ -253,9 +255,11 @@ function(make_ispc_target target sources stubsDestination)
 
     add_dependencies(${target} ${target}_make_dir)
 
-    get_target_property(objLibDeps ${target} DEPENDENCY)
-    if(NOT objLibDeps STREQUAL "")
-        add_dependencies(${objLibDeps} 
+    # Add dependencies to the ISPC compilation target to ensure SceneRdl2  
+    # libraries are built first and their include directories are available
+    get_target_property(objLibDeps ${target} ISPC_DEP_TARGET)
+    if(objLibDeps)
+        add_dependencies(${objLibDeps}
             SceneRdl2::common_platform
             SceneRdl2::scene_rdl2
             ${target}_make_dir
@@ -323,8 +327,8 @@ SConscript_Stub(eval_attribute_debug_hack_ispc)
 Moonray_ispc_compile_options(eval_attribute_debug_hack_ispc)
 Moonray_link_options(eval_attribute_debug_hack_ispc)
 
-get_target_property(eval_attribute_debug_hack_ispc_deps eval_attribute_debug_hack_ispc DEPENDENCY)
-if(NOT eval_attribute_debug_hack_ispc_deps STREQUAL "")
+get_target_property(eval_attribute_debug_hack_ispc_deps eval_attribute_debug_hack_ispc ISPC_DEP_TARGET)
+if(eval_attribute_debug_hack_ispc_deps)
     add_dependencies(${eval_attribute_debug_hack_ispc_deps} 
         SceneRdl2::common_platform
         SceneRdl2::scene_rdl2
@@ -420,20 +424,20 @@ if(IsDarwinPlatform)
     set_target_properties(shading_ispc PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
 endif()
 
-get_target_property(objLibDeps_00 shading_ispc_00 DEPENDENCY)
-get_target_property(objLibDeps_01 shading_ispc_01 DEPENDENCY)
-get_target_property(objLibDeps_02 shading_ispc_02 DEPENDENCY)
-get_target_property(objLibDeps_03 shading_ispc_03 DEPENDENCY)
-get_target_property(objLibDeps_04 shading_ispc_04 DEPENDENCY)
-get_target_property(objLibDeps_05 shading_ispc_05 DEPENDENCY)
-get_target_property(objLibDeps_06 shading_ispc_06 DEPENDENCY)
-get_target_property(objLibDeps_07 shading_ispc_07 DEPENDENCY)
-get_target_property(objLibDeps_08 shading_ispc_08 DEPENDENCY)
-get_target_property(objLibDeps_09 shading_ispc_09 DEPENDENCY)
-get_target_property(objLibDeps_10 shading_ispc_10 DEPENDENCY)
-get_target_property(eval_attribute_debug_hack_ispc_deps eval_attribute_debug_hack_ispc DEPENDENCY)
+get_target_property(objLibDeps_00 shading_ispc_00 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_01 shading_ispc_01 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_02 shading_ispc_02 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_03 shading_ispc_03 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_04 shading_ispc_04 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_05 shading_ispc_05 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_06 shading_ispc_06 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_07 shading_ispc_07 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_08 shading_ispc_08 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_09 shading_ispc_09 ISPC_DEP_TARGET)
+get_target_property(objLibDeps_10 shading_ispc_10 ISPC_DEP_TARGET)
+get_target_property(eval_attribute_debug_hack_ispc_deps eval_attribute_debug_hack_ispc ISPC_DEP_TARGET)
 
-if(NOT objLibDeps_00 STREQUAL "")
+if(objLibDeps_00)
     add_dependencies(${objLibDeps_00} 
         OpenImageIO::OpenImageIO
         SceneRdl2::common_platform
@@ -449,10 +453,12 @@ if(NOT objLibDeps_00 STREQUAL "")
     add_dependencies(${objLibDeps_08} ${objLibDeps_00})
     add_dependencies(${objLibDeps_09} ${objLibDeps_00})
     add_dependencies(${objLibDeps_10} ${objLibDeps_00})
-    add_dependencies(${eval_attribute_debug_hack_ispc_deps} ${objLibDeps_00})
+    if(eval_attribute_debug_hack_ispc_deps)
+        add_dependencies(${eval_attribute_debug_hack_ispc_deps} ${objLibDeps_00})
+    endif()
 endif()
 
-add_dependencies(shading_ispc
+set(shading_ispc_deps
         shading_ispc_00
         shading_ispc_01
         shading_ispc_02
@@ -464,7 +470,11 @@ add_dependencies(shading_ispc
         shading_ispc_08
         shading_ispc_09
         shading_ispc_10
-        eval_attribute_debug_hack_ispc ${eval_attribute_debug_hack_ispc_deps})
+        eval_attribute_debug_hack_ispc)
+if(eval_attribute_debug_hack_ispc_deps)
+    list(APPEND shading_ispc_deps ${eval_attribute_debug_hack_ispc_deps})
+endif()
+add_dependencies(shading_ispc ${shading_ispc_deps})
 
 # If at Dreamworks add a SConscript stub file so others can use this library.
 SConscript_Stub(shading_ispc)
