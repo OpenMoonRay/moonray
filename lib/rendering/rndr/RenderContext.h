@@ -133,17 +133,20 @@ public:
      * Updates the RDL scene with the given binary scene data. Must be called
      * between renders.
      *
-     * @param   rdlData Binary RDL data to apply to the scene.
+     * @param   manifest  Manifest string describing the binary update structure.
+     * @param   payload   Binary RDL data payload to apply to the scene.
+     * @return  True if geometry was changed and a full scene reload is needed.
      */
-    void updateScene(const std::string& manifest, const std::string& payload);
+    bool updateScene(const std::string& manifest, const std::string& payload);
 
     /**
      * Updates the RDL scene with the given scene file. Must be called
      * between renders.
      *
-     * @param   rdlData RDL file to apply to the scene.
+     * @param   filename  RDL file path to load and apply to the scene.
+     * @return  True if geometry was changed and a full scene reload is needed.
     */
-    void updateScene(const std::string& filename);
+    bool updateScene(const std::string& filename);
 
     /**
      * Sets the scene updated flag to true, which can happen if the
@@ -590,6 +593,9 @@ private:
 
     // Helper function which creates a PBR scene.
     void createPbrScene();
+
+    // Helper function to check if geometry changes require a full reload
+    bool checkGeometryChangesRequireReload();
 
     // Helper function that sets the active camera
     void initActiveCamera(const scene_rdl2::rdl2::Camera *camera);

@@ -676,7 +676,27 @@ RenderContext::bakeGeometry(std::vector<std::unique_ptr<geom::BakedMesh>>& baked
     return true;
 }
 
-void
+bool
+RenderContext::checkGeometryChangesRequireReload()
+{
+    // Apply updates to populate geometry change tracking
+    mSceneContext->applyUpdates(mLayer);
+
+    // Check for geometry changes that require full reload
+    const auto& changedGeoms = mLayer->getChangedOrDeformedGeometries();
+
+    for (const auto& geomPair : changedGeoms) {
+        scene_rdl2::rdl2::Geometry* geom = geomPair.first;
+
+        // Check if this geometry has attribute changes that require geometry reload
+        if (geom->attributeTreeChanged()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 RenderContext::updateScene(const std::string& manifest, const std::string& payload)
 {
     MNRY_ASSERT_REQUIRE(!mRendering, "Cannot update scene data while rendering is in progress.");
@@ -684,26 +704,32 @@ RenderContext::updateScene(const std::string& manifest, const std::string& paylo
     if (!mSceneLoaded) {
         // Add the update to the queue that will be processed after we've loaded our scene
         mUpdateQueue.push_back(std::make_pair(manifest, payload));
+        return false;
     } else {
         // Apply the binary update.
         RenderTimer funcTimer(mRenderStats->mUpdateSceneTime);
         scene_rdl2::rdl2::BinaryReader reader(*mSceneContext);
         reader.fromBytes(manifest, payload);
         mSceneUpdated = true;
+
+        return checkGeometryChangesRequireReload();
     }
 }
 
-void
+bool
 RenderContext::updateScene(const std::string& filename)
 {
     MNRY_ASSERT_REQUIRE(!mRendering, "Cannot update scene data while rendering is in progress.");
 
     if (!mSceneLoaded) {
         mUpdateQueue.push_back(std::make_pair(FILE_TOKEN, filename));
+        return false;
     } else {
         RenderTimer funcTimer(mRenderStats->mUpdateSceneTime);
         readSceneFromFile(filename, *mSceneContext);
         mSceneUpdated = true;
+
+        return checkGeometryChangesRequireReload();
     }
 }
 
