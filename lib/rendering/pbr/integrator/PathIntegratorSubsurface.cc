@@ -256,6 +256,8 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                     lpeStateId = lightAovs.lightEventTransition(pbrTls,
                         lpeStateId, light);
                     // accumulate matching aovs
+                    aovAccumLightAovs(pbrTls, *fs.mAovSchema, lightAovs, contribution, nullptr,
+                        AovSchema::sLpePrefixUnoccluded, lpeStateId, aovs);
                     aovAccumVisibilityAovs(pbrTls, *fs.mAovSchema, lightAovs,
                         scene_rdl2::math::Vec2f(0.0f, 1.0f), lpeStateId, aovs);
                 }
