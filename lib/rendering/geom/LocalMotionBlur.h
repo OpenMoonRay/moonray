@@ -74,7 +74,7 @@ private:
     const scene_rdl2::rdl2::Geometry* mRdlGeometry;
     moonray::shading::XformSamples mNodeXform;
     moonray::shading::XformSamples mCameraXform;
-    scene_rdl2::math::Vec3f mCameraXformDiff;
+    scene_rdl2::math::Xform3f mCameraRelXform;
     float mShutterInterval;
     float mFps;
     bool mUseLocalCameraMotionBlur;

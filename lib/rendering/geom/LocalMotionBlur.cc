@@ -40,7 +40,7 @@ LocalMotionBlur::LocalMotionBlur(const GenerateContext& generateContext,
     mFps = sv.get(SceneVariables::sFpsKey);
 
     mCameraXform = { Xform3f(scene_rdl2::math::one) };
-    mCameraXformDiff = Vec3f(0.f);
+    mCameraRelXform = Xform3f(scene_rdl2::math::one);
     if (useLocalCameraMotionBlur) {
         // Get the inverse of the scene camera's node_xform
         const SceneObject* cameraObject = sv.getCamera();
@@ -58,9 +58,13 @@ LocalMotionBlur::LocalMotionBlur(const GenerateContext& generateContext,
                              m1.vw.x, m1.vw.y, m1.vw.z);
             mCameraXform = {x0, x1};
 
-            Vec3f pOrigin(0.f);
-            mCameraXformDiff = transformPoint(mCameraXform[0].inverse(), pOrigin) -
-                               transformPoint(mCameraXform[1].inverse(), pOrigin);
+            // Relative camera transform: maps a world-space point so that
+            // its appearance in the TIMESTEP_BEGIN camera matches its
+            // original appearance in the TIMESTEP_END camera.
+            // In row-vector convention: transformPoint(rel, P) = P * cam1_inv * cam0.
+            // Xform3f A*B applies A first then B, so we need:
+            //   A = xfm1 (= cam1_inv),  B = xfm0.inverse() (= cam0)
+            mCameraRelXform = mCameraXform[1] * mCameraXform[0].inverse();
         }
     }
 
@@ -179,18 +183,12 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
             const float mbMult = getMultiplier(p1, parent2root);
             localMbMask[i] = 1.0f - mbMult;
             if (!isOne(mbMult)) {
-                // Account for motion in the camera's node_xform.
-                Vec3f cameraXformDiff(0.f);
-                if (mUseLocalCameraMotionBlur) {
-                    if (mCameraXform.size() > 1) {
-                    }
-                }
-
                 // Translate the first motion step position towards the second
-                // motion step position(p1) then add the xform difference.
-                vertices(i, 0) = p1 + (p0 - p1) * mbMult  +
-                                 mCameraXformDiff * (1.0f - mbMult);
-
+                // motion step position(p1) and add the camera correction
+                // to counteract camera motion blur from ray generation.
+                const Vec3f p0_reduced = p1 + (p0 - p1) * mbMult;
+                const Vec3f cameraCorrection = transformPoint(mCameraRelXform, p0_reduced) - p0_reduced;
+                vertices(i, 0) = p0_reduced + cameraCorrection * (1.0f - mbMult);
             }
         }
         break;
@@ -216,11 +214,10 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
             const float mbMult = getMultiplier(vertices(i, 0), parent2root);
             localMbMask[i] = 1.0f - mbMult;
             if (!isOne(mbMult)) {
-
-                const Vec3f& p0 = vertices(i, 0);
-
+                const Vec3f cameraVelCorrection =
+                    (transformPoint(mCameraRelXform, vertices(i, 0)) - vertices(i, 0)) * mFps;
                 velocityAttr[i] = velocityAttr[i] * mbMult -
-                                  mCameraXformDiff * (1.0f - mbMult) * mFps;
+                                  cameraVelCorrection * (1.0f - mbMult);
             }
         }
 
@@ -259,14 +256,13 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
             const float mbMult = getMultiplier(vertices(i, 0), parent2root);
             localMbMask[i] = 1.0f - mbMult;
             if (!isOne(mbMult)) {
-
-                const Vec3f& p0 = vertices(i, 0);
-
+                const Vec3f cameraVelCorrection =
+                    (transformPoint(mCameraRelXform, vertices(i, 0)) - vertices(i, 0)) * mFps;
                 velocityAttr[i] = velocityAttr[i] * mbMult -
-                                  mCameraXformDiff * (1.0f - mbMult) * mFps;
+                                  cameraVelCorrection * (1.0f - mbMult);
 
                 accelAttr[i] = accelAttr[i] * mbMult -
-                               mCameraXformDiff * (1.0f - mbMult) * mFps;
+                               cameraVelCorrection * (1.0f - mbMult);
             }
         }
         break;
@@ -298,16 +294,24 @@ LocalMotionBlur::apply(const MotionBlurType mbType,
             if (!isOne(mbMult)) {
                 const Vec3f& p0 = vertices(i, 0);
 
+                // Compute per-sample velocity corrections since the
+                // rotational component is position-dependent.
+                const Vec3f cameraVelCorrection0 =
+                    (transformPoint(mCameraRelXform, p0) - p0) * mFps;
+                const Vec3f cameraVelCorrection1 =
+                    (transformPoint(mCameraRelXform, p1) - p1) * mFps;
                 velocity0Attr[i] = velocity0Attr[i] * mbMult -
-                                   mCameraXformDiff * (1.0f - mbMult) * mFps;
+                                   cameraVelCorrection0 * (1.0f - mbMult);
 
                 velocity1Attr[i] = velocity1Attr[i] * mbMult -
-                                   mCameraXformDiff * (1.0f - mbMult) * mFps;
+                                   cameraVelCorrection1 * (1.0f - mbMult);
 
                 // Translate the first motion step position towards the second
-                // motion step position(p1) then add the xform difference.
-                vertices(i, 0) = p1 + (p0 - p1) * mbMult  +
-                                 mCameraXformDiff * (1.0f - mbMult);
+                // motion step position(p1) and add the camera correction
+                // to counteract camera motion blur from ray generation.
+                const Vec3f p0_reduced = p1 + (p0 - p1) * mbMult;
+                const Vec3f cameraCorrection = transformPoint(mCameraRelXform, p0_reduced) - p0_reduced;
+                vertices(i, 0) = p0_reduced + cameraCorrection * (1.0f - mbMult);
             }
         }
         break;
