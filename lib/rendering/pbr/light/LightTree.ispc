@@ -21,10 +21,12 @@ void LightTree_sample(const uniform LightTree * const uniform me,
                       const varying IntegratorSample1D& lightSelectionSample,
                       const uniform int * uniform lightIdMap)
 {
-    // For bounded lights, importance sample the BVH with adaptive tree splitting
-    const varying bool cullLights = cullingNormal != nullptr;
-    uniform int startNodes[2] = {0, -1}; // {root index, null index}
-    LightTree_sampleRecurse(me, lightSelectionPdfs, startNodes, P, N, cullLights, lightSelectionSample, lightIdMap);
+    if (me->mBoundedLightCount > 0) {
+        // For bounded lights, importance sample the BVH with adaptive tree splitting
+        const varying bool cullLights = cullingNormal != nullptr;
+        uniform int startNodes[2] = {0, -1}; // {root index, null index}
+        LightTree_sampleRecurse(me, lightSelectionPdfs, startNodes, P, N, cullLights, lightSelectionSample, lightIdMap);
+    }
 }
 
 void LightTree_sampleBranch(const uniform LightTree * const uniform me,
