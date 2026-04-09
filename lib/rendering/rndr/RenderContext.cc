@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 #include <scene_rdl2/render/util/AtomicFloat.h> // Needs to be included before any OpenImageIO file
 #include <moonray/rendering/pbr/core/Scene.h>
@@ -3695,6 +3695,16 @@ RenderContext::getCameraAxesScreenSpace(scene_rdl2::math::Vec2f& axisXDir,
     axisXDir = scene_rdl2::math::Vec2f(camera2World[0][0], camera2World[1][0]);
     axisYDir = scene_rdl2::math::Vec2f(camera2World[0][1], camera2World[1][1]);
     axisZDir = scene_rdl2::math::Vec2f(camera2World[0][2], camera2World[1][2]);
+}
+
+scene_rdl2::math::BBox3f
+RenderContext::getSceneBoundsWorld() const
+{
+    // Embree bounds are in render space, so we need to convert them to world space
+    const scene_rdl2::math::BBox3f renderBounds = mPbrScene->getEmbreeAccelerator()->getBounds();
+    const scene_rdl2::math::Mat4f render2World(mPbrScene->getRender2World());
+
+    return scene_rdl2::math::transformBBox(render2World, renderBounds);
 }
 
 } // namespace rndr

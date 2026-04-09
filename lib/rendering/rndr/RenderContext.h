@@ -1,4 +1,4 @@
-// Copyright 2023-2025 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -582,6 +582,10 @@ public:
     /// re-loading the geometries. Intended for use with the
     /// interactive PathVisualizer.
     void forceCameraUpdate();
+
+    // Returns the world-space bounding box of the scene.
+    // Currently used in moonray_gui to frame the scene.
+    scene_rdl2::math::BBox3f getSceneBoundsWorld() const;
 
 private:
     // Does any pre-render work, like building the spatial accelerator or
