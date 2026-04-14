@@ -44,13 +44,15 @@ public:
     EyeCausticBsdfLobe(const scene_rdl2::math::Vec3f& N,
                        const scene_rdl2::math::Vec3f& irisN,
                        const scene_rdl2::math::Color& causticColor,
-                       const float exponent) :
+                       const float exponent,
+                       const scene_rdl2::math::Color& eyeMask) :
         BsdfLobe(Type(REFLECTION | GLOSSY),
                  DifferentialFlags(0),
                  false,
-                 PROPERTY_NORMAL),
+                 PROPERTY_NORMAL | PROPERTY_EYE_MASK),
         mFrame(irisN),
         mCausticColor(causticColor),
+        mEyeMask(eyeMask),
         mN(N)
         {
             // As mentioned in [2], Phong exponents relates to Beckmann roughness using:
@@ -79,7 +81,7 @@ public:
         const float cosThetaO = dot(mN, slice.getWo());
         if (cosThetaO <= 0.0f) return scene_rdl2::math::sBlack;
 
-        const float eyeCausticBrdfCosThetaI = dot(mFrame.getN(), wi);
+        const float eyeCausticBrdfCosThetaI = scene_rdl2::math::min(dot(mFrame.getN(), wi), scene_rdl2::math::sOneMinusEpsilon);
         if (eyeCausticBrdfCosThetaI <= 0.0f)      return scene_rdl2::math::sBlack;
 
         // Normalization Factor from [1]
@@ -159,6 +161,13 @@ public:
                 *(dest + 2) = mFrame.getN().z;
             }
             break;
+        case PROPERTY_EYE_MASK:
+            {
+                *dest       = mEyeMask.r;
+                *(dest + 1) = mEyeMask.g;
+                *(dest + 2) = mEyeMask.b;
+            }
+            break;
         default:
             handled = BsdfLobe::getProperty(property, dest);
             break;
@@ -198,6 +207,7 @@ private:
     float mExponent;
     float mNormalizationFactor;
     float mdDFactor;
+    scene_rdl2::math::Color mEyeMask;
 };
 
 //----------------------------------------------------------------------------

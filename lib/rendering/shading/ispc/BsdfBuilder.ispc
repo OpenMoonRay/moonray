@@ -2162,8 +2162,9 @@ BsdfBuilder_addEyeCausticBRDF(
     EyeCausticBsdfLobe_init((varying EyeCausticBsdfLobe * uniform) lobe,
                          adaptedNormal,
                          brdf.mIrisNormal,
+                         brdf.mCausticColor,
                          brdf.mExponent,
-                         brdf.mCausticColor);
+                         brdf.mEyeMask);
 
     varying Color scale = Color_ctor(weight);
 

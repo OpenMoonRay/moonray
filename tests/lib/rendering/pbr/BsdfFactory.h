@@ -269,7 +269,8 @@ public:
             arena.allocWithArgs<shading::EyeCausticBsdfLobe>(frame.getN(),
                                                              frame.getN(),
                                                              scene_rdl2::math::sWhite,
-                                                             mExponent);
+                                                             mExponent,
+                                                             scene_rdl2::math::sWhite);
         bsdf->addLobe(lobe);
         return bsdf;
     }

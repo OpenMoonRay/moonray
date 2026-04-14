@@ -33,6 +33,7 @@ struct EyeCausticBsdfLobe
     Color mCausticColor;
     float mdDFactor;
     float mNormalizationFactor;
+    Color mEyeMask;
 };
 
 // (Copied from CookTorranceBsdf, since the Beckmann and Phong distributions are related [2])
@@ -173,6 +174,13 @@ EyeCausticBsdfLobe_getProperty(const varying BsdfLobe * uniform lobe,
             *(dest + 2) = N.z;
         }
         break;
+    case BSDF_LOBE_PROPERTY_EYE_MASK:
+        {
+            *dest       = eyeCausticLobe->mEyeMask.r;
+            *(dest + 1) = eyeCausticLobe->mEyeMask.g;
+            *(dest + 2) = eyeCausticLobe->mEyeMask.b;
+        }
+        break;
     default:
         handled = false;
         break;
@@ -216,8 +224,9 @@ inline void
 EyeCausticBsdfLobe_init(varying EyeCausticBsdfLobe * uniform lobe,
                         const varying Vec3f &normal,
                         const varying Vec3f &irisN,
+                        const varying Color &causticColor,
                         const varying float exponent,
-                        const varying Color &causticColor)
+                        const varying Color &eyeMask)
 
 {
     BsdfLobe_init((varying BsdfLobe * uniform) lobe,
@@ -225,7 +234,7 @@ EyeCausticBsdfLobe_init(varying EyeCausticBsdfLobe * uniform lobe,
                   /* type = */ BSDF_LOBE_TYPE_REFLECTION | BSDF_LOBE_TYPE_GLOSSY,
                   /* differentialFlags = */ (uniform BsdfLobeDifferentialFlags)0,
                   /* isSpherical = */ false,
-                  /* propertyFlags = */ BSDF_LOBE_PROPERTY_NORMAL,
+                  /* propertyFlags = */ BSDF_LOBE_PROPERTY_NORMAL | BSDF_LOBE_PROPERTY_EYE_MASK,
                   /* evalFn = */ EyeCausticBsdfLobe_eval,
                   /* sampleFn = */ EyeCausticBsdfLobe_sample,
                   /* albedoFn = */ EyeCausticBsdfLobe_albedo,
@@ -237,6 +246,7 @@ EyeCausticBsdfLobe_init(varying EyeCausticBsdfLobe * uniform lobe,
     lobe->mNg = normal;
 
     lobe->mCausticColor = causticColor;
+    lobe->mEyeMask = eyeMask;
 
     lobe->mExponent = clamp(exponent, 0.1f, EyeCaustic_sMaxExponent);
     lobe->mNormalizationFactor = (lobe->mExponent + 2) * sOneOverTwoPi;

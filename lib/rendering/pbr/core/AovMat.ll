@@ -66,6 +66,7 @@ radius              { aovMat_yylval.s = yytext; return RADIUS; }
 roughness           { aovMat_yylval.s = yytext; return ROUGHNESS; }
 matte               { aovMat_yylval.s = yytext; return MATTE; }
 pbr_validity        { aovMat_yylval.s = yytext; return PBR_VALIDITY; }
+eye_mask            { aovMat_yylval.s = yytext; return EYE_MASK; }
 P             	    { aovMat_yylval.s = yytext; return STATE_VARIABLE_P; }
 N             	    { aovMat_yylval.s = yytext; return STATE_VARIABLE_N; }
 Ng            	    { aovMat_yylval.s = yytext; return STATE_VARIABLE_NG; }

@@ -2051,6 +2051,60 @@ computePbrValidityv(const MaterialAovs::ComputeParamsv &p, float *dest)
                              p.mPixelWeight, dest, p.mLanemask);
 }
 
+// ---------------------------------------------------------------------------
+// eye mask material aov computations
+
+// returns eye mask sum of all matching selections
+
+static void
+computeEyeMask(const MaterialAovs::ComputeParams &p, float *dest)
+{
+    const int flags = p.mEntry.mLobeFlags;
+
+    Color result = scene_rdl2::math::sBlack;
+
+    if (labelMatch(p.mBsdf.getGeomLabelId(), p.mEntry.mGeomLabelIndices) &&
+        labelMatch(p.mBsdf.getMaterialLabelId(), p.mEntry.mMaterialLabelIndices)) {
+
+        // lobes
+        if (flags != shading::BsdfLobe::NONE) {
+            for (int lobeIdx = 0; lobeIdx < p.mBsdf.getLobeCount(); ++lobeIdx) {
+                const shading::BsdfLobe *lobe = p.mBsdf.getLobe(lobeIdx);
+                if (lobe->matchesFlags(flags) &&
+                    lobe->hasProperty(shading::BsdfLobe::PROPERTY_EYE_MASK) &&
+                    labelMatch(shading::aovDecodeLabel(lobe->getLabel()), p.mEntry.mLabelIndices)) {
+
+                    Color c;
+                    lobe->getProperty(shading::BsdfLobe::PROPERTY_EYE_MASK, reinterpret_cast<float *>(&c));
+                    result += c;
+                }
+            }
+        }
+
+        // pixel weight
+        result *= p.mPixelWeight;
+
+    }
+
+    // pack results
+    *dest       += result.r;
+    *(dest + 1) += result.g;
+    *(dest + 2) += result.b;
+}
+
+static void
+computeEyeMaskv(const MaterialAovs::ComputeParamsv &p, float *dest)
+{
+    const int flags = p.mEntry.mLobeFlags;
+    const int subsurface = p.mEntry.mSubsurface;
+
+    ispc::computeEyeMask(&p.mBsdf, flags, subsurface,
+                         reinterpret_cast<const ispc::std_vector *>(&p.mEntry.mLabelIndices),
+                         reinterpret_cast<const ispc::std_vector *>(&p.mEntry.mMaterialLabelIndices),
+                         reinterpret_cast<const ispc::std_vector *>(&p.mEntry.mGeomLabelIndices),
+                         p.mPixelWeight, dest, p.mLanemask);
+}
+
 //----------------------------------------------------------------------------
 // state aovs as material aovs
 // the advantage of these over state aovs is the ability to apply lobe and
@@ -2549,6 +2603,20 @@ MaterialAovs::parseExpression(const std::string &expression,
         idBase = AOV_SCHEMA_ID_MATERIAL_AOV_RGB;
         break;
 
+    case ParsedMaterialExpression::PROPERTY_EYE_MASK:
+        if (m.mFresnelProperty) {
+            scene_rdl2::logging::Logger::error("[MCRT-RENDER] material expression semantic error: "
+                          "eye mask is not a supported fresnel property: \"",
+                          expression, "\"");
+            return AOV_SCHEMA_ID_UNKNOWN;
+        }
+
+        computeFn = computeEyeMask;
+        computeFnv = computeEyeMaskv;
+
+        idBase = AOV_SCHEMA_ID_MATERIAL_AOV_RGB;
+        break;
+
     case ParsedMaterialExpression::PROPERTY_STATE_VARIABLE_P:
         computeFn  = computeStateAov;
         computeFnv = computeStateAovv;
@@ -2704,7 +2772,8 @@ MaterialAovs::Entry::Entry(const std::string &name, int aovSchemaId,
                            AovSchemaId stateAovId,
                            AovSchemaId lpeSchemaId,
                            int lpeLabelId,
-                           bool subsurface):
+                           bool subsurface,
+                           bool allowSecondaryRays):
     mName(name), mAovSchemaId(aovSchemaId),
     mComputeFn(computeFn), mComputeFnv(computeFnv),
     mGeomLabelIndices(geomLabelIndices),
@@ -2716,7 +2785,8 @@ MaterialAovs::Entry::Entry(const std::string &name, int aovSchemaId,
     mStateAovId(stateAovId),
     mLpeSchemaId(lpeSchemaId),
     mLpeLabelId(lpeLabelId),
-    mSubsurface(subsurface)
+    mSubsurface(subsurface),
+    mAllowSecondaryRays(allowSecondaryRays)
 {
 }
 
@@ -2772,7 +2842,8 @@ MaterialAovs::createEntry(const std::string &name,
                           AovSchemaId lpeSchemaId,
                           int lpeLabelId,
                           AovSchemaId &stateAovId,
-                          int &primAttrKey)
+                          int &primAttrKey,
+                          bool allowSecondaryRays)
 {
     // If we already have the entry, return it.
     int result = findEntry(name, lpeSchemaId);
@@ -2833,7 +2904,7 @@ MaterialAovs::createEntry(const std::string &name,
     mEntries.emplace_back(name, idBase + mEntries.size(), computeFn, computeFnv,
                           geomLabelIndices, materialLabelIndices, labelIndices,
                           lobeFlags, filter, primAttrKey, stateAovId, lpeSchemaId,
-                          lpeLabelId, subsurface);
+                          lpeLabelId, subsurface, allowSecondaryRays);
 
     return mEntries.back().mAovSchemaId;
 }
@@ -2860,7 +2931,6 @@ MaterialAovs::computeScalar(pbr::TLState *pbrTls,
     unsigned indx = aovSchemaId % AOV_MAX_RANGE_TYPE;
     MNRY_ASSERT(indx < mEntries.size());
     const Entry &entry = mEntries[indx];
-    const bool isPrimaryRay = ray.getDepth() == 0;
     if (entry.mLpeSchemaId != AOV_SCHEMA_ID_UNKNOWN) {
         // An LPE has been specified for this material AOV.  This is the actual code where
         // we apply the LPE.  This works the same way the "extra aovs" work with their LPEs.
@@ -2868,8 +2938,8 @@ MaterialAovs::computeScalar(pbr::TLState *pbrTls,
         int stateId = lightAovs.materialAovEventTransition(pbrTls, lpeStateId, entry.mLpeLabelId);
         // No AOVs match, don't compute the material AOV
         if (stateId == -1) return;
-    } else if (!isPrimaryRay) {
-        // No LPE, this is a "regular" material AOV.  Skip if this isn't a primary ray.
+    } else if (!entry.mAllowSecondaryRays && ray.getDepth() != 0) {
+        // Secondary-ray evaluation is disabled for this entry; only write on the primary ray.
         return;
     }
     MNRY_ASSERT(entry.mAovSchemaId == aovSchemaId);
@@ -2891,9 +2961,9 @@ MaterialAovs::computeVector(pbr::TLState *pbrTls,
                             const BsdfSlicev *bsdfSlice,
                             const float *pixelWeight,
                             const int *lpeStateId,
-                            const uint32_t *isPrimaryRay,
                             float *dest,
-                            const uint32_t inputLanemask) const
+                            const uint32_t inputLanemask,
+                            const uint32_t primaryLanemask) const
 {
     EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
 
@@ -2920,15 +2990,9 @@ MaterialAovs::computeVector(pbr::TLState *pbrTls,
                 localLanemask &= ~(1 << lane);
             }
         }
-    } else {
-        // No LPE.  Skip if this isn't a primary ray.
-        for (unsigned int lane = 0; lane < VLEN; ++lane) {
-            if (!(localLanemask & (1 << lane))) continue;
-            if (isPrimaryRay[lane] == 0) {
-                // Not a primary ray; disable the lane mask for this lane.
-                localLanemask &= ~(1 << lane);
-            }
-        }
+    } else if (!entry.mAllowSecondaryRays) {
+        // Secondary-ray evaluation is disabled; skip lanes where ray depth > 0.
+        localLanemask &= primaryLanemask;
     }
 
     if (localLanemask != 0) {
@@ -3022,8 +3086,8 @@ CPP_aovSetMaterialAovs(pbr::TLState *pbrTls,
                        const uint32_t pixel[],
                        const uint32_t deepDataHandle[],
                        const int lpeStateId[],
-                       const uint32_t isPrimaryRay[],
-                       const uint32_t lanemask)
+                       const uint32_t lanemask,
+                       const uint32_t primaryLanemask)
 {
     EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
 
@@ -3082,7 +3146,7 @@ CPP_aovSetMaterialAovs(pbr::TLState *pbrTls,
             materialAovLanemasks[i++] = materialAovs.computeVector(pbrTls, entry.id(), lightAovs, isect, ray, scene,
                                                         bsdf, ssAov, bSampler, bsmps, bsdfSlice,
                                                         entry.filter() == AOV_FILTER_AVG ? pixelWeight : onev,
-                                                        lpeStateId, isPrimaryRay, dest, lanemask);
+                                                        lpeStateId, dest, lanemask, primaryLanemask);
             dest += entry.numChannels() * VLEN;
         }
     }

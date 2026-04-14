@@ -477,7 +477,8 @@ public:
               const std::vector<int> &labelIndices,
               int lobeFlags, AovFilter filter,
               int primAttrKey, AovSchemaId stateAovId,
-              AovSchemaId lpeSchemaId, int lpeLabelId, bool subsurface);
+              AovSchemaId lpeSchemaId, int lpeLabelId, bool subsurface,
+              bool allowSecondaryRays);
 
         std::string      mName;
         int              mAovSchemaId;
@@ -506,6 +507,7 @@ public:
         int              mLpeLabelId;  // -1 if not in use
 
         bool             mSubsurface;
+        bool             mAllowSecondaryRays; // evaluate on indirect/secondary rays
     };
 
 
@@ -533,7 +535,8 @@ public:
                     AovSchemaId lpeSchemaId,
                     int lpeLabelId,
                     AovSchemaId &stateVar,
-                    int &primAttrKey);
+                    int &primAttrKey,
+                    bool allowSecondaryRays);
 
     // return the aovSchemaId for this aov, returns AOV_SCHEMA_ID_UNKNOWN
     // if not found.
@@ -567,9 +570,9 @@ public:
                        const shading::BsdfSlicev *bsdfSlice,
                        const float *pixelWeight,
                        const int *lpeStateId,
-                       const uint32_t *isPrimaryRay,
                        float *dest,
-                       uint32_t lanemask) const;
+                       uint32_t lanemask,
+                       uint32_t primaryLanemask) const;
 
 private:
 
@@ -609,6 +612,7 @@ struct ParsedMaterialExpression
         PROPERTY_ROUGHNESS,
         PROPERTY_MATTE,
         PROPERTY_PBR_VALIDITY,
+        PROPERTY_EYE_MASK,
         PROPERTY_STATE_VARIABLE_P,
         PROPERTY_STATE_VARIABLE_N,
         PROPERTY_STATE_VARIABLE_NG,
@@ -730,8 +734,8 @@ CPP_aovSetMaterialAovs(pbr::TLState *pbrTls,
                        const uint32_t pixel[],
                        const uint32_t deepDataHandle[],
                        const int lpeStateId[],
-                       const uint32_t isPrimaryRay[],
-                       uint32_t lanemask);
+                       uint32_t lanemask,
+                       uint32_t primaryLanemask);
 
 // ---------------------------------------------------------------------------
 // Light Aovs

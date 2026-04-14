@@ -1042,12 +1042,14 @@ public:
     EyeCausticBRDF(const scene_rdl2::math::Vec3f& N,
                    const scene_rdl2::math::Vec3f& irisN,
                    const scene_rdl2::math::Color& causticColor,
-                   const float exponent) :
+                   const float exponent,
+                   const scene_rdl2::math::Color& eyeMask) :
         BsdfComponent(nullptr),
         mN(N),
         mIrisNormal(irisN),
         mCausticColor(causticColor),
-        mExponent(exponent)
+        mExponent(exponent),
+        mEyeMask(eyeMask)
     {}
 
     ~EyeCausticBRDF() override {}
@@ -1056,12 +1058,14 @@ public:
     finline const scene_rdl2::math::Vec3f& getIrisNormal()       const { return mIrisNormal; }
     finline const scene_rdl2::math::Color& getCausticColor()     const { return mCausticColor; }
     finline float getExponent()                                  const { return mExponent; }
+    finline const scene_rdl2::math::Color& getEyeMask()          const { return mEyeMask; }
 
 private:
     scene_rdl2::math::Vec3f mN;
     scene_rdl2::math::Vec3f mIrisNormal;
     scene_rdl2::math::Color mCausticColor;
     float mExponent;
+    scene_rdl2::math::Color mEyeMask;
 };
 
 class HairDiffuseBSDF : public BsdfComponent

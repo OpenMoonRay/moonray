@@ -494,7 +494,8 @@ public:
                         mState.adaptNormal(component.getN()),
                         component.getIrisNormal(),
                         component.getCausticColor(),
-                        component.getExponent());
+                        component.getExponent(),
+                        component.getEyeMask());
         scene_rdl2::math::Color scale(weight);
 
         if (isUnder(combineBehavior)) {

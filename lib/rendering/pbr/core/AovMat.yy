@@ -131,6 +131,7 @@ setPrimitiveAttributeRgb(const std::string &in)
 %token     ROUGHNESS
 %token     MATTE
 %token     PBR_VALIDITY
+%token     EYE_MASK
 %token     STATE_VARIABLE_P
 %token     STATE_VARIABLE_N
 %token     STATE_VARIABLE_NG
@@ -185,6 +186,7 @@ property : ALBEDO                { mataov->mProperty = moonray::pbr::ParsedMater
          | ROUGHNESS             { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_ROUGHNESS; }
          | MATTE                 { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_MATTE; }
          | PBR_VALIDITY          { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_PBR_VALIDITY; }
+         | EYE_MASK              { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_EYE_MASK; }
          | STATE_VARIABLE_P      { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_STATE_VARIABLE_P; }
          | STATE_VARIABLE_N      { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_STATE_VARIABLE_N; }
          | STATE_VARIABLE_NG     { mataov->mProperty = moonray::pbr::ParsedMaterialExpression::PROPERTY_STATE_VARIABLE_NG; }

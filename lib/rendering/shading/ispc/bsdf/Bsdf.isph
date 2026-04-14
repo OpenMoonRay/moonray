@@ -95,7 +95,8 @@ enum BsdfLobeProperty {
     BSDF_LOBE_PROPERTY_NORMAL       = 1 << 0,
     BSDF_LOBE_PROPERTY_ROUGHNESS    = 1 << 1,
     BSDF_LOBE_PROPERTY_COLOR        = 1 << 2,
-    BSDF_LOBE_PROPERTY_PBR_VALIDITY = 1 << 3
+    BSDF_LOBE_PROPERTY_PBR_VALIDITY = 1 << 3,
+    BSDF_LOBE_PROPERTY_EYE_MASK     = 1 << 4
 };
 
 struct BsdfLobe;

@@ -257,7 +257,7 @@ EyeCausticBsdfFactory(uniform Arena * uniform arena,
 
     varying BsdfLobe * uniform lobe = allocLobe(arena, sizeof(EyeCausticBsdfLobe));
     EyeCausticBsdfLobe_init((varying EyeCausticBsdfLobe * uniform) lobe,
-                            N, N, exponent, (varying Color) sWhite);
+                            N, N, (varying Color) sWhite, exponent, (varying Color) sWhite);
 
     Bsdf_addLobe(bsdf, lobe);
 

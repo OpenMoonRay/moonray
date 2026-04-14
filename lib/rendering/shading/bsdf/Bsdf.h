@@ -110,7 +110,8 @@ public:
         PROPERTY_NORMAL       = 1 << 0,
         PROPERTY_ROUGHNESS    = 1 << 1,
         PROPERTY_COLOR        = 1 << 2,
-        PROPERTY_PBR_VALIDITY = 1 << 3
+        PROPERTY_PBR_VALIDITY = 1 << 3,
+        PROPERTY_EYE_MASK     = 1 << 4
     };
 
     /// Constructor / Destructor

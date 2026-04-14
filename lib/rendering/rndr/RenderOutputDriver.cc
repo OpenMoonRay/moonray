@@ -1899,7 +1899,8 @@ RenderOutputDriver::Impl::materialAovToSchema(const scene_rdl2::rdl2::RenderOutp
     }
 
     int primAttrKey = -1;
-    result = mMaterialAovs.createEntry(materialAov, filter, lpeSchemaId, lpeLabelId, stateAovId, primAttrKey);
+    const bool allowSecondaryRays = ro->getMaterialAovSecondaryRays();
+    result = mMaterialAovs.createEntry(materialAov, filter, lpeSchemaId, lpeLabelId, stateAovId, primAttrKey, allowSecondaryRays);
     if (result != pbr::AOV_SCHEMA_ID_UNKNOWN) {
         if (primAttrKey >= 0) {
             primAttrs.insert(primAttrKey);

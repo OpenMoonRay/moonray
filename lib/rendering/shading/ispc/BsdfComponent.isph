@@ -501,7 +501,8 @@ void EyeCausticBRDF_init(
         const varying Vec3f& N,
         const varying Vec3f& irisNormal,
         const varying Color& causticColor,
-        const varying float exponent);
+        const varying float exponent,
+        const varying Color& eyeMask);
 
 void HairDiffuseBSDF_init(
         varying HairDiffuseBSDF& bsdf,
@@ -963,6 +964,7 @@ struct EyeCausticBRDF
     varying Vec3f   mIrisNormal;
     varying Color   mCausticColor;
     varying float   mExponent;
+    varying Color   mEyeMask;
 };
 
 struct HairDiffuseBSDF

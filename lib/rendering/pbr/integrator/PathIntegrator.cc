@@ -855,7 +855,7 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
             transparency = reduceTransparency(earlyTerminatorPathThroughput);
         }
 
-        // if this is a primary ray, fill out the aovs
+        // fill out the material aovs
         if (aovs) {
             aovSetMaterialAovs(pbrTls, aovSchema, *fs.mLightAovs, *fs.mMaterialAovs,
                                isect, ray, *scene, *bsdf, ssAov,

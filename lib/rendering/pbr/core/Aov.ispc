@@ -1374,6 +1374,50 @@ computePbrValidity(const varying Bsdf * uniform bsdf,
     storeResult(result, dest);
 }
 
+export void
+#pragma ignore warning(all)
+computeEyeMask(const varying Bsdf * uniform bsdf,
+               const uniform int flags,
+               const uniform int subsurface,
+               const uniform std_vector * uniform entryLabelIndices,
+               const uniform std_vector * uniform entryMaterialLabelIndices,
+               const uniform std_vector * uniform entryGeomLabelIndices,
+               const uniform float * uniform pixelWeight,
+               uniform float * uniform dest,
+               const uniform uint32_t laneMask)
+{
+    // coming back to ispc from c++, we need to re-establish our lane mask
+    if (!((1 << programIndex) & laneMask)) return;
+
+    Color result = sBlack;
+
+    if (labelMatch(Bsdf_getGeomLabelId(bsdf), entryGeomLabelIndices) &&
+        labelMatch(Bsdf_getMaterialLabelId(bsdf), entryMaterialLabelIndices)) {
+
+        // lobes
+        if (flags != BSDF_LOBE_TYPE_NONE) {
+            for (uniform int lobeIdx = 0; lobeIdx < Bsdf_getLobeCount(bsdf); ++lobeIdx) {
+                const varying BsdfLobe * uniform lobe = Bsdf_getLobe(bsdf, lobeIdx);
+                if (isActive(lobe) &&
+                    BsdfLobe_matchesFlags(lobe, flags) &&
+                    labelMatch(aovDecodeLabel(BsdfLobe_getLabel(lobe)), entryLabelIndices)) {
+
+                    if (BsdfLobe_hasProperty(lobe, BSDF_LOBE_PROPERTY_EYE_MASK)) {
+                        Color c;
+                        BsdfLobe_getProperty(lobe, BSDF_LOBE_PROPERTY_EYE_MASK, (varying float * uniform) &c);
+                        result = result + c;
+                    }
+                }
+            }
+        }
+
+        // pixel weight
+        result = applyPixelWeight(result, pixelWeight);
+    }
+
+    storeResult(result, dest);
+}
+
 // ---------------------------------------------------------------------------
 
 extern "C" void
@@ -1393,8 +1437,8 @@ CPP_aovSetMaterialAovs(uniform PbrTLState * uniform pbrTls,
                        const uniform uint32_t * uniform pixel,
                        const uniform uint32_t * uniform deepDataHandle,
                        const uniform int * uniform lpeStateId,
-                       const uniform uint32_t * uniform isPrimaryRay,
-                       uniform uint32_t laneMask);
+                       uniform uint32_t laneMask,
+                       uniform uint32_t primaryLanemask);
 
 extern "C" void
 CPP_aovAccumLightAovs(uniform PbrTLState * uniform pbrTls,
@@ -1433,9 +1477,13 @@ aovAccumMaterialAovs(uniform PbrTLState * uniform pbrTls,
                      varying uint32_t deepDataHandle,
                      varying int lpeStateId)
 {
-    // It's easier to figure this out here per-lane, rather than in CPP_aovSetMaterialAovs().
-    varying uint32_t isPrimaryRay = (Ray_getDepth(ray) == 0) ? 1 : 0;
-
+    // Compute a bitmask of lanes where the ray is a primary (camera) ray.
+    uniform uint32_t primaryLanemask = 0;
+    foreach_active(i) {
+        if (ray.ext.depth == 0) {
+            primaryLanemask |= (1u << i);
+        }
+    }
     CPP_aovSetMaterialAovs(pbrTls,
                            aovSchema,
                            lightAovs,
@@ -1452,8 +1500,8 @@ aovAccumMaterialAovs(uniform PbrTLState * uniform pbrTls,
                            (uniform uint32_t * uniform) &pixel,
                            (uniform uint32_t * uniform) &deepDataHandle,
                            (uniform int * uniform) &lpeStateId,
-                           (uniform uint32_t * uniform) &isPrimaryRay,
-                           lanemask());
+                           lanemask(),
+                           primaryLanemask);
 }
 
 void
@@ -1472,9 +1520,13 @@ aovAccumMaterialAovs(uniform PbrTLState * uniform pbrTls,
                      varying uint32_t deepDataHandle,
                      varying int lpeStateId)
 {
-    // It's easier to figure this out here per-lane, rather than in CPP_aovSetMaterialAovs().
-    varying uint32_t isPrimaryRay = (Ray_getDepth(ray) == 0) ? 1 : 0;
-
+    // Compute a bitmask of lanes where the ray is a primary (camera) ray.
+    uniform uint32_t primaryLanemask = 0;
+    foreach_active(i) {
+        if (ray.ext.depth == 0) {
+            primaryLanemask |= (1u << i);
+        }
+    }
     CPP_aovSetMaterialAovs(pbrTls,
                            aovSchema,
                            lightAovs,
@@ -1491,8 +1543,8 @@ aovAccumMaterialAovs(uniform PbrTLState * uniform pbrTls,
                            (uniform uint32_t * uniform) &pixel,
                            (uniform uint32_t * uniform) &deepDataHandle,
                            (uniform int * uniform) &lpeStateId,
-                           (uniform uint32_t * uniform) &isPrimaryRay,
-                           lanemask());
+                           lanemask(),
+                           primaryLanemask);
 }
 
 void

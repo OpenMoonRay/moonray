@@ -843,12 +843,14 @@ EyeCausticBRDF_init(
         const varying Vec3f& N,
         const varying Vec3f& irisNormal,
         const varying Color& causticColor,
-        const varying float exponent)
+        const varying float exponent,
+        const varying Color& eyeMask)
 {
     me.mN               = N;
     me.mIrisNormal      = irisNormal;
     me.mCausticColor    = causticColor;
     me.mExponent        = exponent;
+    me.mEyeMask         = eyeMask;
 }
 
 void
