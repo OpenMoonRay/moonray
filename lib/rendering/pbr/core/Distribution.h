@@ -212,9 +212,9 @@ public:
     enum Mapping {
         NONE,           ///< Undefined / un-initialized
         PLANAR,         ///< Weighted by the image luminance, no-op.
-        CIRCULAR,       ///< Used for disk light texture sampling, pixels outside of 
-                        ///< a maximal inscribed circle are set to black so we don't
-                        ///< sample them.
+        CIRCULAR,       ///< Used for disk light texture sampling, texels outside of 
+                        ///< the inscribed circle have their sampling weights set to
+                        ///< near-zero so we don't sample them.
         HEMISPHERICAL,  ///< Assuming a latlong input, the upper half of image is
                         ///< weighted by math::sin(2pi * v), see (see pbrt section 14.6.5).
                         ///< The bottom half of image is set to zero so it's not
