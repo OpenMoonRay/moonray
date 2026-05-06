@@ -805,7 +805,11 @@ MeshLight::setMesh(geom::internal::Primitive* prim)
             }
         }
         mArea += area;
-        faces[f].mInvArea = 1 / area;
+        // Guard against degenerate (zero-area) faces storing inf in mInvArea.
+        // Ideally, zero-area (which are also zero energy) faces will not be chosen.
+        // However, if both branches have zero energy, we choose one branch randomly
+        // (see the edge case in drawSampleRecurse). This guard prevents inf from propagating.
+        faces[f].mInvArea = (area > 0.0f) ? (1.0f / area) : 0.0f;
 
         // get energy
         // TODO: more fine detail on texture sampling? Take average instead of max?
@@ -1633,8 +1637,9 @@ MeshLight::intersect(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::V
 }
 
 bool
-MeshLight::sample(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::Vec3f *n, float time, const scene_rdl2::math::Vec3f& r,
-    scene_rdl2::math::Vec3f &wi, LightIntersection &isect, float rayDirFootprint) const
+MeshLight::sample(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::Vec3f *n, float time, 
+                  const scene_rdl2::math::Vec3f& r, scene_rdl2::math::Vec3f &wi, LightIntersection &isect, 
+                  float rayDirFootprint) const
 {
     MNRY_ASSERT(mOn);
 
@@ -1654,7 +1659,10 @@ MeshLight::sample(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::Vec3
         faceIndex = drawSampleRecurse(transformedP, nullptr, 0, r3, pdf);
     }
 
-    MNRY_ASSERT(scene_rdl2::math::isfinite(pdf) && pdf >= 0.0f);
+    MNRY_ASSERT(scene_rdl2::math::isfinite(pdf) && pdf > 0.0f);
+    if (!scene_rdl2::math::isfinite(pdf) || pdf <= 0.0f) {
+        return false;
+    }
     MNRY_ASSERT(mBVH[faceIndex].isLeaf());
     const Face& face = *mBVH[faceIndex].mFace;
 
@@ -1668,6 +1676,20 @@ MeshLight::sample(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::Vec3
         scene_rdl2::math::Vec3f p2 = getFaceVertex(face, 1, time);
         scene_rdl2::math::Vec3f p3 = getFaceVertex(face, 2, time);
 
+        if (mDeformationMb) {
+            const scene_rdl2::math::Vec3f crossProd = cross(p2 - p1, p3 - p1);
+            const float crossLen = length(crossProd);
+            // Handle degenerate, zero-area triangles
+            if (crossLen < scene_rdl2::math::sEpsilon) {
+                return false;
+            }
+            // We cannot directly use face.mNormal here because it is the normal at
+            // time = centroidTime. Therefore we compute it here.
+            normal = crossProd / crossLen;
+        } else {
+            normal = face.mNormal;
+        }
+
         // the random numbers r1 and r2 can be used as uv coordinates
         float u = r1;
         float v = r2;
@@ -1679,14 +1701,6 @@ MeshLight::sample(const scene_rdl2::math::Vec3f &p, const scene_rdl2::math::Vec3
             w = -w;
         }
         hit = w*p1 + u*p2 + v*p3;
-
-        if (mDeformationMb) {
-            // We cannot directly use face.mNormal here because it is the normal at
-            // time = centroidTime. Therefore we compute it here.
-            normal = normalize(cross(p2 - p1, p3 - p1));
-        } else {
-            normal = face.mNormal;
-        }
 
         if (mMapShader) {
             // get barycentric coordinate for hit
