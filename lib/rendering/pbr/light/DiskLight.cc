@@ -414,34 +414,10 @@ DiskLight::sample(const Vec3f &p, const Vec3f *n, float time, const Vec3f& r,
     //    we are in a good region to sample the spread, then sample that region.
     // 3) Otherwise, sample the shape of the light.
     if (mDistribution) {
-        // Sample the image distribution if any
-
-        // This type of technique is bad for for vector processors in general
-        // since some lanes will go idle as the rejection loop still needs to
-        // iterate for other lanes. It should work fine here though because the
-        // distribution has been prebuilt with a low probability of sampling
-        // outside of the inscribed circle by using ImageDistribution::CIRCULAR.
-        // This should ensure we only loop rarely.
-        const unsigned maxTries = 8;
-        unsigned attempts = 0;
-        while(attempts != maxTries) {
-            mDistribution->sample(r1, r2, 0, &isect.uv, nullptr, mTextureFilter);
-            float x = isect.uv.x * 2.0f - 1.0f;
-            float y = isect.uv.y * 2.0f - 1.0f;
-            if (x*x + y*y < 1.0f) {
-                break;
-            }
-
-            // Generate new random numbers based on these ones.
-            // TODO: this is hacky code, do a better job of generating
-            //       further random numbers
-            r1 = scene_rdl2::math::fmod(r1 + 0.789f, 1.0f);
-            r2 = scene_rdl2::math::fmod(r2 + 0.331f, 1.0f);
-
-            attempts++;
-        }
-
-        if (attempts == maxTries) {
+        mDistribution->sample(r1, r2, 0, &isect.uv, nullptr, mTextureFilter);
+        float x = isect.uv.x * 2.0f - 1.0f;
+        float y = isect.uv.y * 2.0f - 1.0f;
+        if (x*x + y*y >= 1.0f) {
             return false;
         }
 
@@ -584,29 +560,10 @@ DiskLight::getEquiAngularPivot(const Vec3f& r, float time) const
     float r2 = r[1];
     // Sample the image distribution if any
     if (mDistribution) {
-        // This type of technique is bad for for vector processors in general
-        // since some lanes will go idle as the rejection loop still needs to
-        // iterate for other lanes. It should work fine here though because the
-        // distribution has been prebuilt with a low probability of sampling
-        // outside of the inscribed circle by using ImageDistribution::CIRCULAR.
-        // This should ensure we only loop rarely.
-        const unsigned maxTries = 8;
-        unsigned attempts = 0;
-        while(attempts != maxTries) {
-            mDistribution->sample(r1, r2, 0, &uv, nullptr, mTextureFilter);
-            float x = uv.x * 2.0f - 1.0f;
-            float y = uv.y * 2.0f - 1.0f;
-            if (x*x + y*y < 1.0f) {
-                break;
-            }
-            // Generate new random numbers based on these ones.
-            // TODO: this is hacky code, do a better job of generating
-            //       further random numbers
-            r1 = scene_rdl2::math::fmod(r1 + 0.789f, 1.0f);
-            r2 = scene_rdl2::math::fmod(r2 + 0.331f, 1.0f);
-            attempts++;
-        }
-        if (attempts == maxTries) {
+        mDistribution->sample(r1, r2, 0, &uv, nullptr, mTextureFilter);
+        float x = uv.x * 2.0f - 1.0f;
+        float y = uv.y * 2.0f - 1.0f;
+        if (x*x + y*y >= 1.0f) {
             return getPosition(time);
         }
         hit = Vec3f((uv[0] - mUvOffset.x) / mUvScale.x,
