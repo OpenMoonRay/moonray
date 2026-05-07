@@ -1299,7 +1299,7 @@ void populateLightStats(std::vector<LightStat>& lightStats, float& totalTime, fl
     int pixelSamplesSqrt = sceneVars.get(scene_rdl2::rdl2::SceneVariables::sPixelSamplesSqrt);
     int numPixels        = sceneVars.get(scene_rdl2::rdl2::SceneVariables::sImageWidth) * 
                            sceneVars.get(scene_rdl2::rdl2::SceneVariables::sImageHeight);
-    int totalPixelSamples = pixelSamplesSqrt*pixelSamplesSqrt * numPixels;
+    double totalPixelSamples = static_cast<double>(pixelSamplesSqrt)*pixelSamplesSqrt * numPixels;
     
     totalTime = 0.0;
     float totalEfficiency = 0.f;
@@ -1321,9 +1321,10 @@ void populateLightStats(std::vector<LightStat>& lightStats, float& totalTime, fl
         totalEfficiency += lightStat.efficiency;
     }
 
-    avgTimePerLight = totalTime / scene->getLightCount();
-    avgEfficiency = totalEfficiency / scene->getLightCount();
-    avgLightsChosen = pbrStats.getCounter(pbr::STATS_NUM_LIGHTS_CHOSEN) / totalPixelSamples;
+    avgTimePerLight = scene->getLightCount() > 0 ? totalTime / scene->getLightCount() : 0.f;
+    avgEfficiency = scene->getLightCount() > 0 ? totalEfficiency / scene->getLightCount() : 0.f;
+    avgLightsChosen = totalPixelSamples > 0 ? 
+                      pbrStats.getCounter(pbr::STATS_NUM_LIGHTS_CHOSEN) / totalPixelSamples : 0.0;
 }
 
 void RenderStats::logLightStats(const pbr::Statistics& pbrStats, const pbr::Scene* scene,
