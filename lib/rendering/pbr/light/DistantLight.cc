@@ -4,65 +4,36 @@
 
 //----------------------------------------------------------------------------
 //
-// mrday - 9/27/17 - DistantLight overhaul
-// ---------------------------------------
-// mslee and I tracked down some bugs and accuracy issues with distant lights. We also wanted to
-// to rework the behaviour of 'normalised' distant lights, so an overhaul was performed. The
-// following points came up during the work.
+// The physical interpretation of a distant light is a spherical cap on the sphere at infinity.
 //
-// * The new physical interpretation of a distant light is that it's a spherical cap, where the
-// sphere in question is centred on the observer and has infinite radius. This replaces the prior
-// interpretation as a disk light at infinity (whose implementation suffered from subtle bugs).
-//
-// * One accuracy issue was the area computation. The area of the cap is 2pi * (1-cosThetaMax),
-// where ThetaMax represents the angle between the centre of the light and the edge (i.e. half
-// the angular diameter). When cosThetaMax approaches 1, the expression 1-cosThetaMax suffers from
-// catastrophic cancellation, and as a result of this something later in the pipeline was breaking
-// down around thetaMax=0.15 degrees (so 0.3 degrees for the light's angular diameter). This was
-// easy to fix, though, using a trig identity:
+// The solid angle of the cap is 2pi * (1-cosThetaMax), where thetaMax is the angular radius. Care must be taken
+// when thetaMax is small and cosThetaMax approaches 1, since the expression 1-cosThetaMax suffers from catastrophic
+// cancellation. To combat this we use the trig identity
 //
 //      1-cos(t) = 2(sin(t))^2.
 //
-// Using sine maintains accuracy all the way down to a zero angle. In fact, an accurate 1-cosThetaMax was
-// useful elsewhere, so we store it in the light's mVersineThetaMax. The versine function is 1-cosine.
-// With this improvement, the light's angle works all the way down to about 0.00000004 degrees - it could
-// perhaps be clamped at this very small value in case it's set to zero (representing a pure directional
-// light).
-//
-// * A somewhat related accuracy issue came up the angle is small. That was in the function
-// sampleLocalSphericalCapUniform() which generates the samples over the light's extent.
-// The newly added version of this funciton now takes as a parameter the more accurately computed
-// versine, rather than the cosine of ThetaMax. It also uses a more numerically robust method to
-// recover the sine from the cosine (or versine). The original calculation was
+// Similarly, the function sampleLocalSphericalCapUniform2() (see shading/util.h) for generating sample directions
+// replaces the standard calculation
 //
 //      sin(theta) = sqrt(1 - (cos(theta))^2)
 //
-// but this suffers from catastrophic cancellation when theta is near zero. So it was replaced with
+// with the more numerically robust
+// 
+//      sin(theta) = sqrt(versine(theta) * (2 - versine(theta))
 //
-//      sin(theta) = sqrt(versine(theta) * (2.0f - versine(theta))
+// There is still one potential accuracy issue in the way thresholding is performed in DistantLight::intersect().
+// By comparing the dot product to cosThetaMax, we lose considerable accuracy when both values are close to 1.
+// But it doesn't appear to cause any trouble so has been left as-is.
 //
-// which is mathematically equivalent but in floating point is far more numerically accurate for small
-// angles. This fixed a problem with shadow penumbras from small distant lights, in which catastrophic
-// cancellation made it possible to see discrete steps correspoinding to changes of 1 ULP in the cosine
-// value. The numerically robust version eliminates the steps and gives the desired smooth gradient.
+// The definition of 'normalised' for distant lights is that when a distant light of uniform radiance (1,1,1)
+// and any angular extent is placed directly overhead a Lambertian surface of reflectance (1,1,1), the resulting
+// outgoing radiance will be (1,1,1). This requires applying an angle-dependent normalisation factor which can be
+// derived directly from the rendering equation, and is found to be
 //
-// * There is still one potential accuracy issue. This is the way thresholding is performed in
-// DistantLight::intersect(). By comparing the dot product to cosThetaMax, we lose considerable accuracy
-// when both values are close to 1. But it doesn't appear to cause any trouble so it can be left as-is
-// for now.
+//      1/sin(min(thetaMax,pi/2))^2
 //
-// * Normalisation of distant lights has been reworked. The new definition of 'normalised' for distant
-// lights is that when a distant light of uniform radiance (1,1,1) and any angular extent is placed
-// directly overhead above a Lambertian surface of colour (1,1,1), the resulting outgoing radiance will
-// be (1,1,1). This requires applying an angle-dependent normalisation factor which was computed by
-// integration and derived directly from the rendering equation. The required normalisation factor is
-//
-//      1/(sin(thetaMax))^2
-//
-// after clamping thetaMax to be no greater than a right-angle (since if the distant light covers more
-// than a hemisphere, only the upper hemisphere contributes light to the surface).
-// See DistantLight::update() for the implementation.
-
+// where thetaMax has been clamped to a right-angle since if the distant light covers more than a hemisphere only
+// the upper hemisphere contributes light to the surface. See DistantLight::update() for the implementation.
 
 
 #include "DistantLight.h"
@@ -81,22 +52,137 @@ namespace moonray {
 namespace pbr {
 
 
-bool                             DistantLight::sAttributeKeyInitialized;
+bool                                                     DistantLight::sAttributeKeyInitialized;
 scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Bool>   DistantLight::sNormalizedKey;
 scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Float>  DistantLight::sAngularExtent;
-
 
 //----------------------------------------------------------------------------
 
 HUD_VALIDATOR(DistantLight);
+
+
+// The functions localToUv() and uvToLocal() establish the mapping in both directions between the direction
+// vector in the light's local space and the (u,v) coordinates on the texture. DistantLight defines the
+// mapping as an equisolid angle fisheye projection, chosen because each texel subtends the same solid angle.
+// For further details see FisheyeCamera::createDir() (case equisolid angle).
+// 
+//
+// Let the unit direction vector (x,y,z) map to texture coords (u,v) with u,v in [0,1]. Here we show how to
+// obtain (u,v) from (x,y,z) and vice versa.
+//
+// First, define scaled-and-offset texture coords (U,V) with U,V in [-1,1]:
+//
+//     U = 2u - 1
+//     V = 2v - 1
+//
+// Given (U,V), let r be its radial distance from the origin:
+// 
+//     r^2 = U^2 + V^2
+// 
+// With the U- and x-axes aligned, and the V- and y-axes aligned, we require (x,y) to be a uniform scaling of (U,V).
+// Let w represent this scaling factor, so we have
+// 
+//     x = U * w
+//     y = V * w
+//
+// The scale factor w is a function of z, and will be different for each fisheye mapping. Our particular mapping is
+// equisolid angle, which https://en.wikipedia.org/wiki/Fisheye_lens defines using
+// 
+//     r = 2 f sin(theta/2)
+// 
+// Here theta is the angle subtended between the direction (x,y,z) and the positive z-axis, i.e. cos(theta) = z,
+// and f is the focal length of the lens, which is not a consideration in the present context but a corresponding
+// scale factor must still be used so that the maximal angle thetaMax corresponding to the outer rim of the
+// DistantLight leads to a circle of radius 1. So we can write
+// 
+//     r = sin(theta/2) / sin(thetaMax/2)
+//  
+// Using the above equations together with the condition |(x,y,z)| = 1 we can derive the following forward and
+// reverse mappings:
+//
+//
+// (x,y,z) -> (u,v)
+// ================
+// 
+// k = sqrt(2) * sin(thetaMax/2)
+// 
+// w = k * sqrt(1+z)
+//
+// U = x / w
+// V = y / w
+// 
+// u = (U+1)/2
+// v = (V+1)/2
+// 
+// 
+// (u,v) -> (x,y,z)
+// ================
+//
+// k = sqrt(2) * sin(thetaMax/2)
+// 
+// U = 2u-1
+// V = 2v-1
+//
+// z = 1 - k^2 (U^2 + V^2)
+// 
+// w = k * sqrt(1+z)
+//
+// x = U * w
+// y = V * w
+//
+//
+// These have been slightly modified to reduce the number of arithmetic operations and to protect against
+// ill conditioned edge cases, yielding the two functions below.
+// 
+// Finally note that the direction vector has been negated relative to the above, in both functions, to
+// account for the internal 180 degree rotation built into DistantLight's frame. This ensures consistency
+// with the texturing for DiskLight.
+
+
+Vec2f
+DistantLight::localToUv(const Vec3f &dir) const
+{
+    MNRY_ASSERT(isNormalized(dir));
+
+    const float oneMinusZ = max(1.0f - dir.z, 1.0e-20f);    // protect against negative arg to sqrt and div by zero
+    const float scale = -mLocalToUvConst / scene_rdl2::math::sqrt(oneMinusZ);
+
+    const float u = clamp(dir.x * scale + 0.5f, 0.0f, 1.0f);
+    const float v = clamp(dir.y * scale + 0.5f, 0.0f, 1.0f);
+
+    return Vec2f(u, v);
+}
+
+Vec3f
+DistantLight::uvToLocal(const Vec2f &uv) const
+{
+    const float u1 = uv.x - 0.5f;
+    const float v1 = uv.y - 0.5f;
+
+    const float z = -1.0f + mUvToLocalConst * (u1*u1 + v1*v1);
+    const float scale = -scene_rdl2::math::sqrt(mUvToLocalConst * (1.0f + z));
+
+    const float x = u1 * scale;
+    const float y = v1 * scale;
+
+    return Vec3f(x, y, z);
+}
 
 Vec3f
 DistantLight::localToGlobal(const Vec3f &v, float time) const
 {
     if (!isMb()) return mFrame.localToGlobal(v);
 
-    // construct a new frame
-    Mat3f m(slerp(mOrientation[0], mOrientation[1], time));
+    const Mat3f m(slerp(mOrientation[0], mOrientation[1], time));
+    return v * m;
+}
+
+Vec3f
+DistantLight::globalToLocal(const Vec3f &v, float time) const
+{
+    if (!isMb()) return mFrame.globalToLocal(v);
+
+    const Mat3f m = Mat3f(slerp(mOrientation[0], mOrientation[1], time)).transposed();
     return v * m;
 }
 
@@ -108,11 +194,9 @@ DistantLight::globalToLocalXform(float time, bool needed) const
     }
 
     if (!isMb()) {
-        // construct a new frame
         return Mat3f(mOrientation[0]).transposed();
     }
 
-    // construct a new frame
     return Mat3f(slerp(mOrientation[0], mOrientation[1], time)).transposed();
 }
 
@@ -141,15 +225,20 @@ DistantLight::update(const Mat4d& world2render)
     updateVisibilityFlags();
     updatePresenceShadows();
     updateRayTermination();
+    updateTextureFilter();
     updateMaxShadowDistance();
     updateMinShadowDistance();
 
     const Mat4d l2w0 = mRdlLight->get(scene_rdl2::rdl2::Node::sNodeXformKey, /* rayTime = */ 0.0f);
     const Mat4d l2w1 = mRdlLight->get(scene_rdl2::rdl2::Node::sNodeXformKey, /* rayTime = */ 1.0f);
+
+    // DistantLight has an internal 180-degree rotation about the x-axis (sRotateX180),
+    // to maintain consistency with DiskLight which emits in the positive local z-direction.
     const Mat4f local2render0 = Mat4f::orthonormalize(sRotateX180 * toFloat(l2w0 * world2render));
     const Mat4f local2render1 = Mat4f::orthonormalize(sRotateX180 * toFloat(l2w1 * world2render));
-    ReferenceFrame frame0(local2render0);
-    ReferenceFrame frame1(local2render1);
+
+    const ReferenceFrame frame0(local2render0);
+    const ReferenceFrame frame1(local2render1);
     mPosition[0] = mPosition[1] = zero;
     mOrientation[0] = normalize(math::Quaternion3f(frame0.getX(), frame0.getY(), frame0.getZ()));
     mOrientation[1] = normalize(math::Quaternion3f(frame1.getX(), frame1.getY(), frame1.getZ()));
@@ -171,21 +260,36 @@ DistantLight::update(const Mat4d& world2render)
         mMb = LIGHT_MB_ROTATION;
     }
 
-    float angularExtent = mRdlLight->get(sAngularExtent);
-    float halfAngle = deg2rad(angularExtent * 0.5f);
+    const float angularExtentDegrees = max(mRdlLight->get(sAngularExtent), sEpsilon);
+    const float angularExtentRadians = deg2rad(angularExtentDegrees);
+    const float thetaMax = 0.5f * angularExtentRadians;
 
-    mCullThreshold = scene_rdl2::math::cos(halfAngle + sHalfPi);
-    MNRY_ASSERT(mCullThreshold <= 0.0f);
+    // DistantLight's localToRender matrix has a built-in 180-degree rotation for consistency with DiskLight.
+    // This has the effect of negating any dot product with the light's z-axis, so we must negate the cull threshold.
+    mCullThreshold = -scene_rdl2::math::cos(min(thetaMax + sHalfPi, sPi));
+    MNRY_ASSERT(mCullThreshold >= 0.0f);
 
-    mCosThetaMax = scene_rdl2::math::cos(halfAngle);
-    float sinQuarterAngle = scene_rdl2::math::sin(halfAngle * 0.5f);
-    mVersineThetaMax = 2.0f * sinQuarterAngle * sinQuarterAngle;
+    mCosThetaMax = scene_rdl2::math::cos(thetaMax);
+    const float sinHalfThetaMax = scene_rdl2::math::sin(thetaMax * 0.5f);
+    mVersineThetaMax = 2.0f * sinHalfThetaMax * sinHalfThetaMax;
+    mLocalToUvConst = 0.5f * scene_rdl2::math::sqrt(0.5f) / sinHalfThetaMax;
+    mUvToLocalConst = 4.0f * mVersineThetaMax;
 
     // We store solid angle and its inverse in the area members, since this is also useful for the unittest.
     // We use an accurately computed versine here because 1-cosine suffers from catastrophic cancellation
     // when the angle is small.
-    mArea = mVersineThetaMax * sTwoPi;
-    mInvArea = 1.0f / mArea;
+    const float solidAngle = mVersineThetaMax * sTwoPi;
+    mArea = solidAngle;
+    mInvArea = 1.0f / solidAngle;
+
+    // To convert the pdf returned by sampling the texture into one which represents the sampling density
+    // on the sphere, we must divide by the solid angle of the projected texture. Above, we computed the
+    // solidAngle for the spherical cap - this must be scaled by 4/pi to account for the full texture, i.e by
+    // the ratio of a square's area to that of its inscribed circle. (Note that this computation is made trivial
+    // by the fact that all texels subtend the same solid angle, since we use an equisolid angle projection.)
+    // So for the Jacobian we store the reciprocal of (4/pi) * solidAngle. This expands to
+    // 1 / ((4/pi) * (versine(thetaMax) * (2pi))), which simplifies to 1 / (8 * versine(thetaMax)).
+    mJacobian = 0.125f / mVersineThetaMax;
 
     // Compute radiance.
     mRadiance = computeLightRadiance(mRdlLight, scene_rdl2::rdl2::Light::sColorKey,
@@ -196,13 +300,28 @@ DistantLight::update(const Mat4d& world2render)
     // the  resulting outgoing radiance at the surface will be (1,1,1) regardless of the light's angular
     // extent. This factor can be derived from the rendering equation.
     if (mRdlLight->get<scene_rdl2::rdl2::Bool>(sNormalizedKey)) {
-        float s = scene_rdl2::math::sin(min(halfAngle,sHalfPi));
+        const float s = scene_rdl2::math::sin(min(thetaMax,sHalfPi));
         mRadiance *= 1.0f / (s*s);
     }
 
     if (isBlack(mRadiance)) {
         mOn = false;
         return false;
+    }
+
+    // Set here in case we early-out
+    mLog2TexelAngle = scene_rdl2::math::neg_inf;
+
+    if (!updateImageMap(Distribution2D::CIRCULAR)) {
+        return false;
+    }
+
+    // Precompute a value for use with ray-footprint-based mip level selection based on the larger texel extent
+    if (mDistribution) {
+        const float texelAngleU = angularExtentRadians / (float)mDistribution->getWidth();
+        const float texelAngleV = angularExtentRadians / (float)mDistribution->getHeight();
+        const float texelAngle = max(texelAngleU, texelAngleV);
+        mLog2TexelAngle = scene_rdl2::math::log2(texelAngle);
     }
 
     return true;
@@ -217,7 +336,9 @@ DistantLight::canIlluminate(const Vec3f p, const Vec3f *n, float time, float rad
     // Don't illuminate as a regular light if referenced by a portal
     if (mHasPortal) return false;
 
-    if (n && dot(-(*n), getDirection(time)) < mCullThreshold) {
+    // The sense of this comparison takes into account the 180-degree rotation built into
+    // DistantLight's localToRender matrix.
+    if (n && dot(*n, getDirection(time)) > mCullThreshold) {
         return false;
     }
 
@@ -254,7 +375,9 @@ bool
 DistantLight::intersect(const Vec3f &p, const Vec3f *n, const Vec3f &wi, float time,
         float maxDistance, LightIntersection &isect) const
 {
-    if (dot(-wi, getDirection(time)) < mCosThetaMax) {
+    // DistantLight's localToRender matrix has a built-in 180-degree rotation for consistency with DiskLight.
+    // This has the effect of negating any dot product with the light's z-axis, so we must negate cos thetaMax here.
+    if (dot(wi, getDirection(time)) > -mCosThetaMax) {
         return false;
     }
 
@@ -262,10 +385,9 @@ DistantLight::intersect(const Vec3f &p, const Vec3f *n, const Vec3f &wi, float t
         return false;
     }
 
-
     isect.N = -wi;
     isect.distance = sDistantLightDistance;
-    isect.uv = zero;
+    isect.uv = mDistribution ? localToUv(globalToLocal(wi, time)) : zero;
 
     return true;
 }
@@ -276,8 +398,26 @@ DistantLight::sample(const Vec3f &p, const Vec3f *n, float time, const Vec3f& r,
 {
     MNRY_ASSERT(mOn);
 
-    Vec3f sample = shading::sampleLocalSphericalCapUniform2(r[0], r[1], mVersineThetaMax);
-    wi = -localToGlobal(sample, time);
+    if (mDistribution) {
+        const float mipLevel = getMipLevel(rayDirFootprint);
+        mDistribution->sample(r[0], r[1], mipLevel, &isect.uv, nullptr, mTextureFilter);
+        const float U = isect.uv.x * 2.0f - 1.0f;
+        const float V = isect.uv.y * 2.0f - 1.0f;
+        if (U*U + V*V >= 1.0f) {
+            return false;
+        }
+        const Vec3f wiLocal = uvToLocal(isect.uv);
+        wi = localToGlobal(wiLocal, time);
+    } else {
+        // The cap sampling utiility function generates a position on a cap centered on the frame's positive z-axis.
+        // DistantLight is also defined to lie on the positive z-axis of its local frame; however its localToRender
+        // matrix has a built-in 180-degree rotation, so we negate the generated cap direction to produce the local
+        // wi vector.
+        const Vec3f sampledCapDir = shading::sampleLocalSphericalCapUniform2(r[0], r[1], mVersineThetaMax);
+        const Vec3f wiLocal = -sampledCapDir;
+        wi = localToGlobal(wiLocal, time);
+        isect.uv = zero;
+    }
 
     if (n  &&  dot(*n, wi) < sEpsilon) {
         return false;
@@ -285,7 +425,6 @@ DistantLight::sample(const Vec3f &p, const Vec3f *n, float time, const Vec3f& r,
 
     isect.N = -wi;
     isect.distance = sDistantLightDistance;
-    isect.uv = zero;
 
     return true;
 }
@@ -297,7 +436,12 @@ DistantLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Ve
 {
     MNRY_ASSERT(mOn);
 
+    const float mipLevel = getMipLevel(rayDirFootprint);
+
     Color radiance = mRadiance;
+    if (mDistribution) {
+        radiance *= mDistribution->eval(isect.uv[0], isect.uv[1], mipLevel, mTextureFilter);
+    }
 
     if (lightFilterList) {
         evalLightFilterList(lightFilterList,
@@ -309,11 +453,17 @@ DistantLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Ve
                             },
                             radiance,
                             visibility);
-        }
+    }
+
 
     if (pdf) {
-        *pdf = mInvArea;
+        if (mDistribution) {
+            *pdf = mDistribution->pdf(isect.uv[0], isect.uv[1], mipLevel, mTextureFilter) * mJacobian;
+        } else {
+            *pdf = mInvArea;
+        }
     }
+
     return radiance;
 }
 
