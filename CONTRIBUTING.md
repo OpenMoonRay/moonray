@@ -1,108 +1,120 @@
-# Overview
+# Contributing to MoonRay
 
-This project aims to be governed in a transparent, accessible way for the benefit of the community. All participation in this project is open and not bound to corporate affiliation. Participants are all bound to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Thank you for your interest in contributing to MoonRay!  This document explains our contribution process and procedures.
 
-# Project roles
+## Community and Discussion
 
-## Contributor
+The [Discussions](https://github.com/OpenMoonRay/OpenMoonRay/discussions) panel of the main Open MoonRay GitHub repository is used for asking questions, starting discussions, making announcements, and general engagement with the MoonRay community.
 
-The contributor role is the starting role for anyone participating in the project and wishing to contribute code.
+## Bug Reports and Issue Tracking
 
-### Process for becoming a contributor
+The [Issues](https://github.com/OpenMoonRay/OpenMoonRay/issues) panel of the main Open MoonRay GitHub repository is used to report bugs and build issues, and requesting enhancements.
 
-* Review the [coding standards](https://docs.openmoonray.org/developer-reference/coding-standards/) to ensure your contribution is in line with the project's coding and styling guidelines.
-* Have a signed CLA on file ( see [below](#contributor-license-agreements) )
-* Have your submission approved by the [committer(s)](#committer) and merged into the codebase.
+## Legal Requirements
 
-#### License
+### License
 
-MoonRay is licensed under the [Apache, version 2.0](LICENSE.md)
-license. Contributions to MoonRay should abide by that standard
-license.
+MoonRay is licensed under the [Apache 2.0 license](LICENSE). Contributions to the project should abide by that standard license.
 
-#### Contributor License Agreements
+### Contributor License Agreement (CLA)
 
-Developers who wish to contribute code to be considered for inclusion in MoonRay must first complete
-a **Contributor License Agreement**, and email it to MoonRay@dreamworks.com and be sure to include
-your GitHub username(s).
+Developers who wish to contribute code to be considered for inclusion
+in the MoonRay project must first complete a **Contributor
+License Agreement**.
+
+To contribute to MoonRay, you must sign a CLA through the
+[EasyCLA](https://docs.linuxfoundation.org/lfx/easycla)
+system, which is integrated with GitHub as a pull request check.
+
+If a contributor opens a pull request without having a CLA on file, the
+contributor will be guided through the process to have the appropriate
+CLA signed. Look in the PR comments for the "linux-foundation-easycla"
+check that would fail, and a red "NOT COVERED" button will appear in the PR
+comments; click the link in the comment to sign the CLA. For organizations,
+you can alternatively go to [this
+link](https://organization.lfx.linuxfoundation.org/foundation/a09410000182dD2AAI/project/a092M00001If9ujQAB/cla)
+prior to submitting a pull request, which will guide you through the
+process to have a CLA signed on behalf of the organization.
 
 * If you are an individual writing the code on your own time and
-  you're SURE you are the sole owner of any intellectual property you
-  contribute, you can [sign the CLA as an individual contributor](https://github.com/dreamworksanimation/openmoonray/blob/main/tsc/icla.md).
+  you're **sure** you are the sole owner of any intellectual property you
+  contribute, you can sign the CLA as an **Individual Contributor**. If you
+  are unsure, please contact your employer for clarity.
 
-* If you are writing the code as part of your job, or if there is any
-  possibility that your employers might think they own any
-  intellectual property you create, then you should use the [Corporate
-  Contributor Licence
-  Agreement](https://github.com/dreamworksanimation/openmoonray/blob/main/tsc/ccla.md).
+* If you are writing the code as part of your job, or if your employer
+  retains ownership to intellectual property you create, no matter how
+  small, then your company's legal affairs representatives should sign
+  a **Corporate Contributor License Agreement**. If your company already
+  has a signed CCLA on file, ask your local CLA manager to add you
+  (via your GitHub account name/email address) to your company's
+  "approved" list.
 
-The MoonRay CLAs are in the [OpenMoonRay repo](https://github.com/dreamworksanimation/openmoonray/tree/main/tsc).
+The downloadable PDFs on the EasyCLA page are provided for reference
+only. To execute the signature, sign the form online through the
+relevant links.
 
-#### Commit Sign-Off
+The MoonRay CLAs are the standard forms used by the Linux Foundation
+projects and [recommended by the ASWF
+TAC](https://github.com/AcademySoftwareFoundation/tac/blob/main/process/contributing.md#contributor-license-agreement-cla).
+Note that if you have signed a CLA for a different ASWF or LF project, that
+CLA doesn't apply here and you need to sign for this project specifically.
 
-Every commit must be signed off.  That is, every commit log message
-must include a “`Signed-off-by`” line (generated, for example, with
-“`git commit --signoff`”), indicating that the committer wrote the
-code and has the right to release it under the
-[Apache License, version 2.0](LICENSE)
-license. See [http://developercertificate.org](http://developercertificate.org/) for more information on this requirement.
+### Developer Certificate of Origin (DCO)
 
-## Committer
+The MoonRay project requires the use of the [Developer Certificate of Origin 1.1 (DCO)](https://developercertificate.org/), which affirms that the contribution was created by you the contributor, and that you have the rights to contribute the changes under the open source license. It is the same mechanism that the  [Linux® Kernel](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/process/submitting-patches.rst#n416) and many other communities use to manage code contributions. The DCO is considered one of the simplest tools for sign offs from contributors as the representations are meant to be easy to read and indicating signoff is done as a part of the commit message.
 
-The committer role enables the participant to commit code directly to the repository, but also comes with the obligation to be a responsible leader in the community.
+Here is an example Signed-off-by line, which indicates that the submitter accepts the DCO:
+```
+Signed-off-by: John Doe <john.doe@example.com>
+```
 
-### Process for becoming a committer
+You can include this automatically when you commit a change to your local git repository using `git commit -s`. You might also want to leverage this [command line tool](https://github.com/coderanger/dco) for automatically adding the signoff message on commits.
 
-* Show your experience with the codebase through contributions and engagement on the community channels.
-* Request to become a committer.
-* Have the majority of committers approve you becoming a committer.
-* Your name and email is added to the [MAINTAINERS](MAINTAINERS.md) file for the project.
+[Read more about MoonRay legal and licensing concerns for contributions here](https://docs.openmoonray.org/license/).
 
-### Committer responsibilities
+## Repository Structure
 
-* Monitor email aliases.
-* Monitor Forums (delayed response is perfectly acceptable).
-* Triage GitHub issues and perform pull request reviews for other committers and the community.
-* Make sure that ongoing PRs are moving forward at the right pace or close them.
-* Remain an active contributor to the project in general and the code base in particular.
+MoonRay is available as a number of repositories on GitHub. The main repository is [`openmoonray`](README.md), and it [references all the other repositories](.gitmodules) required to build MoonRay as [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules).
 
-### When does a committer lose committer status?
+Some of the MoonRay repositories use [Git Large File Storage (LFS)](https://git-lfs.com/) to track larger files like images. Ensure that Git LFS is installed prior to cloning the MoonRay project:
+```
+git lfs install
+```
+To clone the entire code base needed to build MoonRay, including submodules:
+```
+git clone --recurse-submodules https://github.com/OpenMoonRay/openmoonray.git
+```
 
-If a committer is no longer interested or cannot perform the committer duties listed above, they
-should volunteer to be moved to emeritus status. In extreme cases this can also occur by a vote of
-the committers per the voting process below.
+[Read more about the MoonRay source structure here](https://docs.openmoonray.org/developer-reference/source-structure/).
 
-## Technical Steering Committee (TSC) member
+## Development and Pull Requests
 
-The Technical Steering Committee (TSC) oversees the overall technical direction of MoonRay, as defined in the [charter](charter.md).
+Contributions to MoonRay should be submitted as GitHub Pull Requests. See the [GitHub Pull Request documentation](https://help.github.com/articles/using-pull-requests/) to learn about this process if you are unfamiliar.
 
-TSC voting members consist of committers that have been nominated by the committers, with a supermajority of voting members required to have a committer elected to be a TSC voting member. TSC voting members term and succession is defined in the [charter](charter.md).
+All code must be formally reviewed before being merged into the repository.
 
-All meetings of the TSC are open to participation by any member of the MoonRay community. Meeting times are listed in the [MoonRay technical community calendar](https://calendar.google.com/calendar/embed?src=c_0104aeaceaad2fdc2db4264d1b1211ed56c33cb51086cd5a2a8df324158d21c5%40group.calendar.google.com&ctz=America%2FLos_Angeles).
+The development cycle for a code change should follow the following process:
 
-## Current TSC members
+1. Create a GitHub account, fork the appropriate MoonRay repository, and clone the fork to create a repository on your local machine.
+2. Edit, compile, and test your changes.
+3. Commit your changes to a topic branch on your local repository, and push the branch to your fork.
+4. Create a Pull Request on the appropriate MoonRay GitHub repository from your fork for your contribution.
+5. Currently, no CI / Actions will be triggered, but we expect this to change as the project advances.
+6. Pull Requests will be reviewed by project Contributors and Committers, who may discuss, offer constructive feedback, request changes, or approve the work.
+7. Once approved by the required number of Committers, a Committer other than the contributor may merge the changes into the main branch.
 
-* Jon Lanz, Chair / DreamWorks
-* Toshi Kato / DreamWorks
-* Rob Wilson / DreamWorks
+Note that at this current early stage of MoonRay open source, all contributions will first round-trip through DWA's internal development and source management system. This ensures stability for our productions, and allows us to perform security scanning and regression testing before integrating any contributions from the open source community. Once reviewed, scanned, and tested, contributions will appear in a future release and the original Pull Request will be closed.
 
-# Release Process
+Please have patience as we continue to work on improving this process, with the goal of being able to directly accept contributions via Pull Requests with automatic and open scanning and testing soon.
 
-Project releases will occur on a scheduled basis as agreed to by the TSC.
+## Coding Standards
 
-# Conflict resolution and voting
+Please see the [MoonRay Coding Standards documentation](https://docs.openmoonray.org/developer-reference/coding-standards/) for a reference on project code style and best practices.
 
-In general, we prefer that technical issues and committer status/TSC membership are amicably worked out
-between the persons involved. If a dispute cannot be decided independently, the TSC can be
-called in to decide an issue. If the TSC themselves cannot decide an issue, the issue will
-be resolved by voting. The voting process is a simple majority in which each TSC receives one vote.
+## Testing Policy
 
-# Communication
+Most MoonRay modules have a companion `tests` folder within the repository, containing a set of unit tests that validate its functionality. When contributing new code to MoonRay, make sure to include new or updated unit tests as appropriate to validate the expected behavior of the new code.
 
-This project, just like all of open source, is a global community. In addition to the [Code of Conduct](CODE_OF_CONDUCT.md), this project will:
+Additionally, MoonRay provides a [Render Acceptance Test Suite (RATS)](https://github.com/OpenMoonRay/rats) to catch visual regressions caused by changes to the codebase before those changes are deployed into a production environment. It works by comparing canonical images rendered with the previously sanctioned version of the renderer to images rendered with a development version.
 
-* Keep all communication on open channels ( mailing list, forums, chat ).
-* Be respectful of time and language differences between community members ( such as scheduling meetings, email/issue responsiveness, etc ).
-* Ensure tools are able to be used by community members regardless of their region.
-
-If you have concerns about communication challenges for this project, please contact the [TSC](mailto:MoonRay_TSC@dreamworks.com).
+All contributions that may impact the resulting look of rendered images must pass RATS before being accepted. Unintentional look changes must be addressed in the contributed code. Intentional look changes must be approved by the TSC, and updated canonical reference images must be provided such that the tests continue to pass.
