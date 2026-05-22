@@ -154,7 +154,10 @@ Bsdf::show(const std::string &sceneClass, const std::string &name, std::ostream&
         const BsdfLobe* const lobe = mLobeArray[i];
         if (lobe->getLightSet()) {
             os << "<LightSet> : '" << lobe->getLightSet()->getName() << "'\n";
+        } else {
+            os << "<LightSet> : '<none>'\n";
         }
+        os << "label: " << lobe->getLabel() << "\n";
         lobe->show(os, "");
         os << "\n";
     }
