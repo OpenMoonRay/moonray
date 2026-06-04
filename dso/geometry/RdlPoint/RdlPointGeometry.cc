@@ -11,6 +11,7 @@
  */
 
 #include <moonray/rendering/geom/Api.h>
+#include <moonray/rendering/geom/LocalMotionBlur.h>
 #include <moonray/rendering/geom/ProceduralLeaf.h>
 #include <moonray/rendering/geom/PrimitiveUserData.h>
 
@@ -107,6 +108,23 @@ RdlPointProcedural::generate(const GenerateContext &generateContext,
         static_cast<const RdlPointGeometry*>(rdlGeometry);
 
     const scene_rdl2::rdl2::Layer *rdlLayer = generateContext.getRdlLayer();
+
+    // Local motion blur initialization
+    shading::XformSamples parent2renderFix = parent2render;
+    std::unique_ptr<local_motion_blur::LocalMotionBlur> localMotionBlur;
+    if (generateContext.isMotionBlurOn() && rdlGeometry->getUseLocalMotionBlur()) {
+        localMotionBlur = local_motion_blur::createFromPointLists(
+            generateContext,
+            rdlPointGeometry->get(attrLocalMotionBlurPositionList),
+            rdlPointGeometry->get(attrLocalMotionBlurOrientList),
+            rdlPointGeometry->get(attrLocalMotionBlurScaleList),
+            rdlPointGeometry->get(attrLocalMotionBlurRadiusList),
+            rdlPointGeometry->get(attrLocalMotionBlurInnerRadiusList),
+            rdlPointGeometry->get(attrLocalMotionBlurMultiplierList),
+            rdlPointGeometry->get(attrLocalMotionBlurStrengthMult),
+            rdlPointGeometry->get(attrLocalMotionBlurRadiusMult),
+            parent2renderFix);
+    }
 
     shading::PrimitiveAttributeTable primitiveAttributeTable;
 
@@ -259,6 +277,13 @@ RdlPointProcedural::generate(const GenerateContext &generateContext,
                                              shading::RATE_VERTEX, std::move(accelerations));
     }
 
+    // Apply local motion blur to vertex buffer before building the primitive
+    if (localMotionBlur) {
+        const shading::XformSamples parent2Root = {scene_rdl2::math::Xform3f(scene_rdl2::math::one)};
+        localMotionBlur->apply(numPosSamples, numVelSamples, numAccSamples,
+                               parent2Root, vertices, primitiveAttributeTable);
+    }
+
     // radius buffer
     const std::vector<float> &rv = rdlPointGeometry->get(attrRadius);
     Points::RadiusBuffer radius(vertCount);
@@ -327,11 +352,11 @@ RdlPointProcedural::generate(const GenerateContext &generateContext,
         std::unique_ptr<Primitive> p =
             convertForMotionBlur(generateContext,
                                  std::move(primitive),
-                                 (rdlPointGeometry->get(attrUseRotationMotionBlur) && parent2render.size() > 1));
+                                 (rdlPointGeometry->get(attrUseRotationMotionBlur) && parent2renderFix.size() > 1));
 
         addPrimitive(std::move(p),
                      generateContext.getMotionBlurParams(),
-                     parent2render);
+                     parent2renderFix);
     }
 }
 

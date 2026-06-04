@@ -9,6 +9,7 @@
  */
 
 #include <moonray/rendering/geom/Api.h>
+#include <moonray/rendering/geom/LocalMotionBlur.h>
 #include <moonray/rendering/geom/ProceduralLeaf.h>
 #include <moonray/rendering/geom/PrimitiveUserData.h>
 
@@ -105,6 +106,23 @@ RdlCurveProcedural::generate(const GenerateContext &generateContext,
             static_cast<const RdlCurveGeometry*>(rdlGeometry);
 
     const scene_rdl2::rdl2::Layer *rdlLayer = generateContext.getRdlLayer();
+
+    // Local motion blur initialization
+    shading::XformSamples parent2renderFix = parent2render;
+    std::unique_ptr<local_motion_blur::LocalMotionBlur> localMotionBlur;
+    if (generateContext.isMotionBlurOn() && rdlGeometry->getUseLocalMotionBlur()) {
+        localMotionBlur = local_motion_blur::createFromPointLists(
+            generateContext,
+            rdlCurveGeometry->get(attrLocalMotionBlurPositionList),
+            rdlCurveGeometry->get(attrLocalMotionBlurOrientList),
+            rdlCurveGeometry->get(attrLocalMotionBlurScaleList),
+            rdlCurveGeometry->get(attrLocalMotionBlurRadiusList),
+            rdlCurveGeometry->get(attrLocalMotionBlurInnerRadiusList),
+            rdlCurveGeometry->get(attrLocalMotionBlurMultiplierList),
+            rdlCurveGeometry->get(attrLocalMotionBlurStrengthMult),
+            rdlCurveGeometry->get(attrLocalMotionBlurRadiusMult),
+            parent2renderFix);
+    }
 
     // curve type
     const int procType = rdlGeometry->get(attrCurvesType);
@@ -378,6 +396,13 @@ RdlCurveProcedural::generate(const GenerateContext &generateContext,
                                              shading::RATE_VERTEX, std::move(accelerations));
     }
 
+    // Apply local motion blur to vertex buffer before building the primitive
+    if (localMotionBlur) {
+        const shading::XformSamples parent2Root = {scene_rdl2::math::Xform3f(scene_rdl2::math::one)};
+        localMotionBlur->apply(numPosSamples, numVelSamples, numAccSamples,
+                               parent2Root, vertices, primitiveAttributeTable);
+    }
+
     // layer assignments
     LayerAssignmentId layerAssignmentId = createPerCurveAssignmentId(
         rdlCurveGeometry, rdlLayer, vertexCounts.size());
@@ -457,11 +482,11 @@ RdlCurveProcedural::generate(const GenerateContext &generateContext,
         std::unique_ptr<Primitive> p =
             convertForMotionBlur(generateContext,
                                  std::move(primitive),
-                                 (rdlCurveGeometry->get(attrUseRotationMotionBlur) && parent2render.size() > 1));
+                                 (rdlCurveGeometry->get(attrUseRotationMotionBlur) && parent2renderFix.size() > 1));
 
         addPrimitive(std::move(p),
                      generateContext.getMotionBlurParams(),
-                     parent2render);
+                     parent2renderFix);
     }
 }
 

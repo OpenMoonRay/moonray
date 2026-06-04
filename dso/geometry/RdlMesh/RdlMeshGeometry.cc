@@ -9,6 +9,7 @@
  */
 
 #include <moonray/rendering/geom/Api.h>
+#include <moonray/rendering/geom/LocalMotionBlur.h>
 #include <moonray/rendering/geom/ProceduralLeaf.h>
 #include <moonray/rendering/geom/PrimitiveUserData.h>
 
@@ -111,16 +112,19 @@ private:
     VertexBuffer<Vec3fa, InterleavedTraits> getVertexData(
         const scene_rdl2::rdl2::Geometry* rdlGeometry,
         shading::PrimitiveAttributeTable &primitiveAttributeTable,
-        const moonray::geom::RateCounts& rates
+        const moonray::geom::RateCounts& rates,
+        int& numPosSamples, int& numVelSamples, int& numAccSamples
     );
 
     std::unique_ptr<SubdivisionMesh> createSubdMesh(
         const scene_rdl2::rdl2::Geometry* rdlGeometry,
-        const scene_rdl2::rdl2::Layer* rdlLayer);
+        const scene_rdl2::rdl2::Layer* rdlLayer,
+        const local_motion_blur::LocalMotionBlur* localMotionBlur);
 
     std::unique_ptr<PolygonMesh> createPolyMesh(
         const scene_rdl2::rdl2::Geometry* rdlGeometry,
-        const scene_rdl2::rdl2::Layer* rdlLayer);
+        const scene_rdl2::rdl2::Layer* rdlLayer,
+        const local_motion_blur::LocalMotionBlur* localMotionBlur);
     
     SubdivisionMesh* mSubdMesh;
     PolygonMesh* mPolygonMesh;
@@ -145,11 +149,28 @@ RdlMeshProcedural::generate(
 
     const scene_rdl2::rdl2::Layer *rdlLayer = generateContext.getRdlLayer();
 
+    // Local motion blur initialization
+    shading::XformSamples parent2renderFix = parent2render;
+    std::unique_ptr<local_motion_blur::LocalMotionBlur> localMotionBlur;
+    if (generateContext.isMotionBlurOn() && rdlGeometry->getUseLocalMotionBlur()) {
+        localMotionBlur = local_motion_blur::createFromPointLists(
+            generateContext,
+            rdlMeshGeometry->get(attrLocalMotionBlurPositionList),
+            rdlMeshGeometry->get(attrLocalMotionBlurOrientList),
+            rdlMeshGeometry->get(attrLocalMotionBlurScaleList),
+            rdlMeshGeometry->get(attrLocalMotionBlurRadiusList),
+            rdlMeshGeometry->get(attrLocalMotionBlurInnerRadiusList),
+            rdlMeshGeometry->get(attrLocalMotionBlurMultiplierList),
+            rdlMeshGeometry->get(attrLocalMotionBlurStrengthMult),
+            rdlMeshGeometry->get(attrLocalMotionBlurRadiusMult),
+            parent2renderFix);
+    }
+
     std::unique_ptr<Primitive> primitive;
     if (!isSubd) {
-        primitive = createPolyMesh(rdlGeometry, rdlLayer);
+        primitive = createPolyMesh(rdlGeometry, rdlLayer, localMotionBlur.get());
     } else {
-        primitive = createSubdMesh(rdlGeometry, rdlLayer);
+        primitive = createSubdMesh(rdlGeometry, rdlLayer, localMotionBlur.get());
     }
 
     if (primitive) {
@@ -158,9 +179,9 @@ RdlMeshProcedural::generate(
         std::unique_ptr<Primitive> p = convertForMotionBlur(
             generateContext, std::move(primitive),
             (rdlMeshGeometry->get(attrUseRotationMotionBlur) &&
-            parent2render.size() > 1));
+            parent2renderFix.size() > 1));
         addPrimitive(std::move(p),
-            generateContext.getMotionBlurParams(), parent2render);
+            generateContext.getMotionBlurParams(), parent2renderFix);
 
     }
 }
@@ -191,7 +212,8 @@ VertexBuffer<Vec3fa, InterleavedTraits>
 RdlMeshProcedural::getVertexData(
     const scene_rdl2::rdl2::Geometry* rdlGeometry,
     shading::PrimitiveAttributeTable &primitiveAttributeTable,
-    const moonray::geom::RateCounts& rates)
+    const moonray::geom::RateCounts& rates,
+    int& numPosSamples, int& numVelSamples, int& numAccSamples)
 {
     const RdlMeshGeometry* rdlMeshGeometry =
         static_cast<const RdlMeshGeometry*>(rdlGeometry);
@@ -210,9 +232,9 @@ RdlMeshProcedural::getVertexData(
     bool acc0Valid = sizeCheck(rdlMeshGeometry, getName(rdlMeshGeometry, attrAcc), procAccList0.size(), vertCount);
 
     // Fall back on static case if we don't have sufficient data for requested mb type
-    int numPosSamples = 1;
-    int numVelSamples = 0;
-    int numAccSamples = 0;
+    numPosSamples = 1;
+    numVelSamples = 0;
+    numAccSamples = 0;
 
     bool err = false;
     scene_rdl2::rdl2::MotionBlurType motionBlurType =
@@ -378,7 +400,8 @@ RdlMeshProcedural::getVertexData(
 std::unique_ptr<SubdivisionMesh>
 RdlMeshProcedural::createSubdMesh(
     const scene_rdl2::rdl2::Geometry* rdlGeometry,
-    const scene_rdl2::rdl2::Layer* rdlLayer)
+    const scene_rdl2::rdl2::Layer* rdlLayer,
+    const local_motion_blur::LocalMotionBlur* localMotionBlur)
 {
     const RdlMeshGeometry* rdlMeshGeometry =
         static_cast<const RdlMeshGeometry*>(rdlGeometry);
@@ -418,9 +441,18 @@ RdlMeshProcedural::createSubdMesh(
     const moonray::geom::RateCounts rates{partCount, faceCount, vertCount, vertCount, faceVaryingCount};
 
     // Get the vertices, velocities, uvs, normals etc.
-    SubdivisionMesh::VertexBuffer vertices = getVertexData(rdlGeometry, primitiveAttributeTable, rates);
+    int numPosSamples, numVelSamples, numAccSamples;
+    SubdivisionMesh::VertexBuffer vertices = getVertexData(rdlGeometry, primitiveAttributeTable, rates,
+                                                           numPosSamples, numVelSamples, numAccSamples);
     if (vertices.empty()) {
         return nullptr;
+    }
+
+    // Apply local motion blur to the vertex buffer before building the primitive.
+    if (localMotionBlur) {
+        const shading::XformSamples parent2Root = {scene_rdl2::math::Xform3f(scene_rdl2::math::one)};
+        localMotionBlur->apply(numPosSamples, numVelSamples, numAccSamples,
+                               parent2Root, vertices, primitiveAttributeTable);
     }
 
     // per face assignment id
@@ -559,7 +591,8 @@ RdlMeshProcedural::createSubdMesh(
 std::unique_ptr<PolygonMesh>
 RdlMeshProcedural::createPolyMesh(
     const scene_rdl2::rdl2::Geometry* rdlGeometry,
-    const scene_rdl2::rdl2::Layer* rdlLayer)
+    const scene_rdl2::rdl2::Layer* rdlLayer,
+    const local_motion_blur::LocalMotionBlur* localMotionBlur)
 {
     const RdlMeshGeometry* rdlMeshGeometry =
         static_cast<const RdlMeshGeometry*>(rdlGeometry);
@@ -599,9 +632,18 @@ RdlMeshProcedural::createPolyMesh(
     const moonray::geom::RateCounts rates{partCount, faceCount, vertCount, vertCount, faceVaryingCount};
 
     // Get the vertices, velocities, uvs, normals etc.
-    PolygonMesh::VertexBuffer vertices = getVertexData(rdlGeometry, primitiveAttributeTable, rates);
+    int numPosSamples, numVelSamples, numAccSamples;
+    PolygonMesh::VertexBuffer vertices = getVertexData(rdlGeometry, primitiveAttributeTable, rates,
+                                                       numPosSamples, numVelSamples, numAccSamples);
     if (vertices.empty()) {
         return nullptr;
+    }
+
+    // Apply local motion blur to the vertex buffer before building the primitive.
+    if (localMotionBlur) {
+        const shading::XformSamples parent2Root = {scene_rdl2::math::Xform3f(scene_rdl2::math::one)};
+        localMotionBlur->apply(numPosSamples, numVelSamples, numAccSamples,
+                               parent2Root, vertices, primitiveAttributeTable);
     }
 
     // per face assignment id

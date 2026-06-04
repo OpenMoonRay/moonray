@@ -39,6 +39,7 @@ RDL2_DSO_ATTR_DECLARE
     // support for arbitrary data. Vector of UserData
     rdl2::AttributeKey<rdl2::SceneObjectVector> attrPrimitiveAttributes;
 
+    DECLARE_COMMON_LOCAL_MOTION_BLUR_POINT_ATTRIBUTES
     DECLARE_COMMON_MESH_ATTRIBUTES
     DECLARE_COMMON_MOTION_BLUR_ATTRIBUTES
     DECLARE_COMMON_EXPLICIT_SHADING_ATTRIBUTES
@@ -220,6 +221,7 @@ RDL2_DSO_ATTR_DEFINE(rdl2::Geometry)
         "Each key/value pair will be added as a primitive attribute of the mesh.");
     sceneClass.setGroup("User Data", attrPrimitiveAttributes);
 
+    DEFINE_COMMON_LOCAL_MOTION_BLUR_POINT_ATTRIBUTES
     DEFINE_COMMON_MESH_ATTRIBUTES
     DEFINE_COMMON_MOTION_BLUR_ATTRIBUTES
     DEFINE_COMMON_EXPLICIT_SHADING_ATTRIBUTES
