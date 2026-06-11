@@ -25,7 +25,11 @@ namespace {
 
 finline float
 fitInRange(float value, float oldMin, float oldMax, float newMin, float newMax) {
-    return ((newMax - newMin) * (value - oldMin) / (oldMax - oldMin)) + newMin;
+    const float range = oldMax - oldMin;
+    if (scene_rdl2::math::isZero(range)) {
+        return newMin;
+    }
+    return ((newMax - newMin) * (value - oldMin) / range) + newMin;
 }
 
 scene_rdl2::math::Color

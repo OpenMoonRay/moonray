@@ -682,7 +682,7 @@ BsdfBuilder_addMirrorBSDF(
     const varying Vec3f adaptedNormal =
         Intersection_adaptNormal(asAnIntersection(*(me.mState)), bsdf.mN);
 
-    if (reflWeight > 0.f) {
+    if (any(reflWeight > 0.f)) {
         refl = (varying BsdfLobe * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying MirrorReflectionBsdfLobe));
         MirrorReflectionBsdfLobe_init(
@@ -690,7 +690,7 @@ BsdfBuilder_addMirrorBSDF(
                 adaptedNormal);
     }
 
-    if (transWeight > 0.f) {
+    if (any(transWeight > 0.f)) {
         trans = (varying BsdfLobe * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying MirrorTransmissionBsdfLobe));
         MirrorTransmissionBsdfLobe_init(
@@ -1066,7 +1066,7 @@ BsdfBuilder_addMicrofacetAnisotropicBSDF(
     const varying Vec3f adaptedNormal =
         Intersection_adaptNormal(asAnIntersection(*(me.mState)), bsdf.mN);
 
-    if (reflWeight > 0.f) {
+    if (any(reflWeight > 0.f)) {
         refl = (varying BsdfLobe * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying AnisoCookTorranceBsdfLobe));
         AnisoCookTorranceBsdfLobe_init(
@@ -1085,7 +1085,7 @@ BsdfBuilder_addMicrofacetAnisotropicBSDF(
         const float avgReflectionRoughness =
             (bsdf.mRoughnessU + bsdf.mRoughnessV) * 0.5f;
 
-    if (transWeight > 0.0f) {
+    if (any(transWeight > 0.0f)) {
         trans = (varying BsdfLobe * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying TransmissionCookTorranceBsdfLobe));
         float favg, favgInv;
@@ -1225,7 +1225,7 @@ BsdfBuilder_addMicrofacetIsotropicBSDF(
     const varying Vec3f adaptedNormal =
         Intersection_adaptNormal(asAnIntersection(*(me.mState)), bsdf.mN);
 
-    if (reflWeight > 0.f) {
+    if (any(reflWeight > 0.f)) {
         if (bsdf.mMicrofacetDistribution == MICROFACET_DISTRIBUTION_BECKMANN) {
             refl = (varying BsdfLobe * uniform)
                 Arena_alloc(me.mTls->mArena, sizeof(varying CookTorranceBsdfLobe));
@@ -1253,7 +1253,7 @@ BsdfBuilder_addMicrofacetIsotropicBSDF(
         }
     }
 
-    if (transWeight > 0.f) {
+    if (any(transWeight > 0.f)) {
         // Because the TransmissionCookTorranceBsdfLobe becomes unstable as the
         // relative IOR approaches 1.0 we create a mirror transmission lobe here.
         // Using any() here will likely introduce non-determinism and potentially

@@ -195,6 +195,28 @@ TestBsdfOneSamplerv::testIridescence()
                 (sRoughness[i] > 0.1  &&  sRoughness[i] < 0.5),
                 (sRoughness[i] > 0.1), TestBsdfSettings::BSDF_ONE_SAMPLERV);
         runTest(test, sViewAnglesTheta, 1, getSampleCount(sRoughness[i]));
+
+        // Same hue for primary and secondary: spectrumDistance==0 triggers the
+        // fitInRange div-by-zero path.  (1,0,0) and (0.5,0,0) are different
+        // colors so isEqual() is false, but both map to hue=0.
+        IridescenceBsdfFactory sameHueFactory(sRoughness[i], 1.0f, ispc::SHADING_IRIDESCENCE_COLOR_USE_HUE_INTERPOLATION,
+                scene_rdl2::math::Color(1.f, 0.f, 0.f), scene_rdl2::math::Color(0.5f, 0.f, 0.f), false,
+                ispc::COLOR_RAMP_CONTROL_SPACE_RGB, size, positions, interpolators, colors,
+                2.f, 1.f, 1.f, 1.f);
+        TestBsdfSettings sameHueTest(sameHueFactory, frame, true, 0.002, 0.04,
+                (sRoughness[i] > 0.1  &&  sRoughness[i] < 0.5),
+                (sRoughness[i] > 0.1), TestBsdfSettings::BSDF_ONE_SAMPLERV);
+        runTest(sameHueTest, sViewAnglesTheta, 1, getSampleCount(sRoughness[i]));
+
+        // RAMP mode
+        IridescenceBsdfFactory rampFactory(sRoughness[i], 1.0f, ispc::SHADING_IRIDESCENCE_COLOR_USE_RAMP,
+                scene_rdl2::math::Color(1.f, 0.f, 0.f), scene_rdl2::math::Color(1.f, 0.f, 1.f), false,
+                ispc::COLOR_RAMP_CONTROL_SPACE_RGB, size, positions, interpolators, colors,
+                2.f, 1.f, 1.f, 1.f);
+        TestBsdfSettings rampTest(rampFactory, frame, true, 0.002, 0.04,
+                (sRoughness[i] > 0.1  &&  sRoughness[i] < 0.5),
+                (sRoughness[i] > 0.1), TestBsdfSettings::BSDF_ONE_SAMPLERV);
+        runTest(rampTest, sViewAnglesTheta, 1, getSampleCount(sRoughness[i]));
     }
 }
 

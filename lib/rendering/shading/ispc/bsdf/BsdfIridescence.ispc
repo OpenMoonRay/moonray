@@ -15,7 +15,11 @@
 inline varying float
 fitInRange(varying float value, const varying float oldMin, varying float oldMax, varying float newMin, varying float newMax)
 {
-    return ((newMax - newMin) * (value - oldMin) / (oldMax - oldMin)) + newMin;
+    const varying float range = oldMax - oldMin;
+    if (isZero(range)) {
+        return newMin;
+    }
+    return ((newMax - newMin) * (value - oldMin) / range) + newMin;
 }
 
 inline varying Color
