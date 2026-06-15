@@ -16,6 +16,9 @@
 #include <scene_rdl2/common/math/ispc/asA.isph>
 #include <scene_rdl2/common/math/ispc/Col3.isph>
 #include <scene_rdl2/common/math/ispc/Color.isph>
+// TODO this Mat4 header needs to be included twice for things to work
+// and that is terribly wrong.
+#include <scene_rdl2/common/math/ispc/Mat4.isph>
 #include <scene_rdl2/common/math/ispc/ReferenceFrame.isph>
 #include <scene_rdl2/common/math/ispc/Vec2.isph>
 #include <scene_rdl2/common/math/ispc/Vec3.isph>
