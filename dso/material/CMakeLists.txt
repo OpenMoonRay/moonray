@@ -3,4 +3,5 @@
 
 add_subdirectory(RaySwitch)
 add_subdirectory(Switch)
+add_subdirectory(TestInputsMaterial)
 add_subdirectory(UsdPreviewSurface)

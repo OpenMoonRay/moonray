@@ -7,6 +7,7 @@
 #include <scene_rdl2/common/math/ispc/Color.isph>
 #include <scene_rdl2/common/math/ispc/ColorSpace.isph>
 #include <scene_rdl2/common/math/ispc/Constants.isph>
+#include <scene_rdl2/common/math/ispc/Mat3.isph>
 #include <scene_rdl2/common/math/ispc/Mat4.isph>
 #include <scene_rdl2/common/math/ispc/Transcendental.isph>
 #include <scene_rdl2/common/math/ispc/Vec2.isph>

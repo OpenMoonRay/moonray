@@ -3,4 +3,5 @@
 
 add_subdirectory(CombineDisplacement)
 add_subdirectory(NormalDisplacement)
+add_subdirectory(TestInputsDisplacement)
 add_subdirectory(VectorDisplacement)

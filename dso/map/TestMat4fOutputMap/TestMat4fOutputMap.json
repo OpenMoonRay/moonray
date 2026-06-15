@@ -1,0 +1,22 @@
+{
+	"attributes" : 
+	{
+		"inAttr" : 
+		{
+			"default" : "Rgb(0.0f, 1.0f, 0.5f)",
+			"flags" : "FLAGS_BINDABLE",
+			"name" : "in",
+			"type" : "Rgb"
+		}
+	},
+	"name" : "TestMat4fOutputMap",
+	"outputAttributes" : 
+	{
+		"outAttr" : 
+		{
+			"name" : "out",
+			"type" : "Mat4f"
+		}
+	},
+	"type" : "Map"
+}

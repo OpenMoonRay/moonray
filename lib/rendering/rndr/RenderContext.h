@@ -773,6 +773,18 @@ private:
                            const shading::State& state, shading::BsdfBuilder& bsdfBuilder);
     static void fatalSample(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
                             const shading::State& state, scene_rdl2::math::Color* sample);
+    static void fatalSampleBool(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::rdl2::Bool* sample);
+    static void fatalSampleInt(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::rdl2::Int* sample);
+    static void fatalSampleVec4f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::math::Vec4f* sample);
+    static void fatalSampleRgba(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::rdl2::Rgba* sample);
+    static void fatalSampleMat3f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::math::Mat3f* sample);
+    static void fatalSampleMat4f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                            const shading::State& state, scene_rdl2::math::Mat4f* sample);
     static void fatalSampleNormal(const scene_rdl2::rdl2::NormalMap* self, shading::TLState *tls,
                                   const shading::State& state, scene_rdl2::math::Vec3f* sample);
 

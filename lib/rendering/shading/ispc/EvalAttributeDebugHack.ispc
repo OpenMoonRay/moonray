@@ -27,6 +27,11 @@ varying Color derefAndCastToVaryingColor(const uniform uint8_t *varying ptr)
     return *((const uniform Color *varying)(ptr));
 }
 
+varying Col4f derefAndCastToVaryingCol4f(const uniform uint8_t *varying ptr)
+{
+    return *((const uniform Col4f *varying)(ptr));
+}
+
 varying Vec2f derefAndCastToVaryingVec2f(const uniform uint8_t *varying ptr)
 {
     return *((const uniform Vec2f *varying)(ptr));
@@ -35,6 +40,11 @@ varying Vec2f derefAndCastToVaryingVec2f(const uniform uint8_t *varying ptr)
 varying Vec3f derefAndCastToVaryingVec3f(const uniform uint8_t *varying ptr)
 {
     return *((const uniform Vec3f *varying)(ptr));
+}
+
+varying Vec4f derefAndCastToVaryingVec4f(const uniform uint8_t *varying ptr)
+{
+    return *((const uniform Vec4f *varying)(ptr));
 }
 
 varying Mat4f derefAndCastToVaryingMat4f(const uniform uint8_t *varying ptr)

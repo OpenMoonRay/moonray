@@ -260,6 +260,12 @@ RenderContext::RenderContext(RenderOptions& options, std::stringstream* initMess
     // Set up fatal shade/sample funcs for use when shaders have a fatal error
     mSceneContext->setFatalShadeFunc(fatalShade);
     mSceneContext->setFatalSampleFunc(fatalSample);
+    mSceneContext->setFatalSampleFuncBool(fatalSampleBool);
+    mSceneContext->setFatalSampleFuncInt(fatalSampleInt);
+    mSceneContext->setFatalSampleFuncVec4f(fatalSampleVec4f);
+    mSceneContext->setFatalSampleFuncRgba(fatalSampleRgba);
+    mSceneContext->setFatalSampleFuncMat3f(fatalSampleMat3f);
+    mSceneContext->setFatalSampleFuncMat4f(fatalSampleMat4f);
     mSceneContext->setFatalSampleNormalFunc(fatalSampleNormal);
 
     mRenderStats.reset(new RenderStats);
@@ -3208,6 +3214,54 @@ RenderContext::fatalSample(const scene_rdl2::rdl2::Map* self, shading::TLState *
 {
     const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
     *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalColor);
+}
+
+void
+RenderContext::fatalSampleBool(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state,scene_rdl2::rdl2::Bool* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalBool);
+}
+
+void
+RenderContext::fatalSampleInt(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state, scene_rdl2::rdl2::Int* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalInt);
+}
+
+void
+RenderContext::fatalSampleVec4f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state, scene_rdl2::math::Vec4f* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalVec4f);
+}
+
+void
+RenderContext::fatalSampleRgba(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state, scene_rdl2::rdl2::Rgba* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalRgba);
+}
+
+void
+RenderContext::fatalSampleMat3f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state, scene_rdl2::math::Mat3f* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalMat3f);
+}
+
+void
+RenderContext::fatalSampleMat4f(const scene_rdl2::rdl2::Map* self, shading::TLState *tls,
+                           const shading::State& state, scene_rdl2::math::Mat4f* sample)
+{
+    const scene_rdl2::rdl2::SceneVariables &sv = self->getSceneClass().getSceneContext()->getSceneVariables();
+    *sample = sv.get(scene_rdl2::rdl2::SceneVariables::sFatalMat4f);
 }
 
 void
