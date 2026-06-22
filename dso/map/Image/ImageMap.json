@@ -85,6 +85,13 @@
             },
             "comment": "If this is set to 'on' or 'auto' and the 'texture' file is 8-bit, then a power of 2.2 will be applied to the RGB channels of the image."
         },
+        "attrSourceColorSpace": {
+            "name": "source_color_space",
+            "label": "source color space",
+            "type": "String",
+            "default": "\"auto\"",
+            "comment": "OCIO source color space for the texture. Use 'auto' to apply the active OCIO file rules, 'raw' or 'data' to disable source conversion, or an explicit color-space name from the active OCIO config. When OCIO conversion is active, the legacy gamma mode is bypassed."
+        },
         "attrOffset": {
             "name": "offset",
             "type": "Vec2f",

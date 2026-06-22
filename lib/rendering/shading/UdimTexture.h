@@ -24,6 +24,7 @@ public:
                 scene_rdl2::rdl2::ShaderLogEventRegistry& logEventRegistry,
                 const std::string &filename,
                 ispc::TEXTURE_GammaMode gammaMode,
+                const std::string& sourceColorSpace,
                 WrapType wrapS,
                 WrapType wrapT,
                 bool useDefaultColor,
@@ -73,4 +74,3 @@ void CPP_oiioUdimTexture(const ispc::UDIM_TEXTURE_Data* tx,
 
 } // namespace shading
 } // namespace moonray
-

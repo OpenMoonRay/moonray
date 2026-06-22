@@ -24,6 +24,7 @@ public:
 
     bool update(const std::string &filename,
                 ispc::TEXTURE_GammaMode gammaMode,
+                const std::string& sourceColorSpace,
                 WrapType wrapS,
                 WrapType wrapT,
                 bool useDefaultColor,
@@ -63,4 +64,3 @@ void CPP_oiioTexture(const ispc::BASIC_TEXTURE_Data* tx,
 
 } // namespace shading
 } // namespace moonray
-
