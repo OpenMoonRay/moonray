@@ -18,7 +18,12 @@ OiioReader::readData(const int subImageId)
     }
 
     const OIIO::ImageSpec &spec = mSpec;
-    mPixels.resize(spec.width * spec.height * spec.nchannels);
+    size_t size = static_cast<size_t>(spec.width) * static_cast<size_t>(spec.height) * static_cast<size_t>(spec.nchannels);
+    try {
+        mPixels.resize(size);
+    } catch (const std::bad_alloc& e) {
+        return false; // memory allocation failed
+    }
     if (mPixels.empty()) {
         return false;           // internal pixels buffer resize failed
     }
