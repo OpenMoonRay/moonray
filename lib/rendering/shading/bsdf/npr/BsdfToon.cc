@@ -389,10 +389,10 @@ ToonBsdfLobe::eval(const BsdfSlice &slice,
                       wi,
                       sEpsilon));  // Must be > 1e-9
     }
-    float cosThetaWi = max(dot(N, wi), 0.0f);
+    float cosThetaWi = dot(N, wi);
 
     if (pdf != NULL) {
-        *pdf = cosThetaWi * sOneOverPi;
+        *pdf = max(cosThetaWi, 0.0f) * sOneOverPi;
     }
 
     // Note: we assume this lobe has been setup with a OneMinus*Fresnel
