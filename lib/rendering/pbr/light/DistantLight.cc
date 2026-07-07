@@ -160,7 +160,7 @@ DistantLight::uvToLocal(const Vec2f &uv) const
     const float v1 = uv.y - 0.5f;
 
     const float z = -1.0f + mUvToLocalConst * (u1*u1 + v1*v1);
-    const float scale = -scene_rdl2::math::sqrt(mUvToLocalConst * (1.0f + z));
+    const float scale = -scene_rdl2::math::sqrt(mUvToLocalConst * (1.0f - z));
 
     const float x = u1 * scale;
     const float y = v1 * scale;
