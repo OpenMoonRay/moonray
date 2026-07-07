@@ -807,7 +807,7 @@ ImageDistribution::init(const std::string &mapFilename,
 
     // Throw exception if 'in' is null
     if (in == nullptr) {
-        throw scene_rdl2::except::IoError("Image file \"" + mapFilename + "\" does not exist. Using black radiance");
+        throw scene_rdl2::except::IoError("Image file \"" + mapFilename + "\" does not exist.");
     }
 
     // Get ImageSpec

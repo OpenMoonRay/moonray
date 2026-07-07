@@ -193,6 +193,7 @@ enum CookieOutsideProjection
     HUD_MEMBER(int, mOutsideProjection);                                      \
     HUD_MEMBER(float, mDensity);                                              \
     HUD_MEMBER(bool, mInvert);                                                \
+    HUD_MEMBER(HUD_NAMESPACE(scene_rdl2::math, Color), mTextureFallbackColor);\
     HUD_PTR(ImageDistribution *, mDistribution)
 
 #define COOKIE_LIGHT_FILTER_V2_VALIDATION                                     \
@@ -210,6 +211,7 @@ enum CookieOutsideProjection
     HUD_VALIDATE(CookieLightFilter_v2, mOutsideProjection);                   \
     HUD_VALIDATE(CookieLightFilter_v2, mDensity);                             \
     HUD_VALIDATE(CookieLightFilter_v2, mInvert);                              \
+    HUD_VALIDATE(CookieLightFilter_v2, mTextureFallbackColor);                \
     HUD_VALIDATE(CookieLightFilter_v2, mDistribution);                        \
     HUD_END_VALIDATION
 

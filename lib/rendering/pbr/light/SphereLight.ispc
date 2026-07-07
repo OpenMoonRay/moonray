@@ -340,6 +340,8 @@ SphereLight_eval(const uniform Light * uniform li, uniform ShadingTLState * unif
         // Note: the distribution doesn't contribute to the pdf, since we ignore it when sampling
         radiance = radiance * ImageDistribution_eval(light->mDistribution,
                 isect.uv.x, isect.uv.y, 0, light->mTextureFilter);
+    } else {
+        radiance = radiance * light->mTextureFallbackColor;
     }
 
     if (lightFilterList) {

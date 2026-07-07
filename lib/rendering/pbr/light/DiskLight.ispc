@@ -380,6 +380,8 @@ DiskLight_eval(const uniform Light * uniform li, uniform ShadingTLState * unifor
         // TODO: Use proper filtering with ray differentials and mip-mapping.
         radiance = radiance * ImageDistribution_eval(light->mDistribution,
                 isect.uv.x, isect.uv.y, 0, light->mTextureFilter);
+    } else {
+        radiance = radiance * light->mTextureFallbackColor;
     }
 
     if (lightFilterList) {

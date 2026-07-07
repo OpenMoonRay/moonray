@@ -504,6 +504,8 @@ RectLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Vec3f
 
     if (mDistribution) {
         radiance *= mDistribution->eval(isect.uv[0], isect.uv[1], 0, mTextureFilter);
+    } else {
+        radiance *= mTextureFallbackColor;
     }
 
     if (lightFilterList) {

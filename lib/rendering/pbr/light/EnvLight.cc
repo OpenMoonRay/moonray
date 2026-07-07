@@ -307,6 +307,8 @@ EnvLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Vec3f 
     Color radiance = mRadiance;
     if (mDistribution) {
         radiance *= mDistribution->eval(isect.uv[0], isect.uv[1], mipLevel, mTextureFilter);
+    } else {
+        radiance *= mTextureFallbackColor;
     }
 
     if (lightFilterList) {

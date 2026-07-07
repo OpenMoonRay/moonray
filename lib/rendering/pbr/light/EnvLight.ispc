@@ -221,6 +221,8 @@ EnvLight_eval(const uniform Light * uniform li, uniform ShadingTLState * uniform
     if (light->mDistribution) {
         radiance = radiance * ImageDistribution_eval(light->mDistribution,
                 isect.uv.x, isect.uv.y, mipLevel, light->mTextureFilter);
+    } else {
+        radiance = radiance * light->mTextureFallbackColor;
     }
 
     if (lightFilterList) {

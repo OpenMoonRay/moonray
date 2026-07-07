@@ -488,7 +488,8 @@ SpotLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Vec3f
     MNRY_ASSERT(mOn);
 
     // Apply texture if present
-    Color radiance = mDistribution ? mDistribution->eval(isect.uv.x, isect.uv.y, 0, mTextureFilter) : sWhite;
+    Color radiance = mDistribution ? mDistribution->eval(isect.uv.x, isect.uv.y, 0, mTextureFilter)
+                                   : mTextureFallbackColor;
 
     // Apply spotlight falloff function at intersection with focal plane
     Vec2f normalizedFocalCoords = 2.0f * isect.uv - Vec2f(1.0f, 1.0f);

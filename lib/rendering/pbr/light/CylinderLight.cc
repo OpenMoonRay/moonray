@@ -395,6 +395,8 @@ CylinderLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const V
 
     if (mDistribution) {
         radiance *= mDistribution->eval(isect.uv[0], isect.uv[1], 0, mTextureFilter);
+    } else {
+        radiance *= mTextureFallbackColor;
     }
 
     if (lightFilterList) {
