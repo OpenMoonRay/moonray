@@ -44,8 +44,8 @@
     HUD_MEMBER(int, mVolumeIndirectSamples);               \
     HUD_MEMBER(int, mPad2);                                \
     HUD_CPP_MEMBER(std::vector<int>, mDeepIDAttrIdxs, 24); \
-    HUD_MEMBER(int, mCryptoUVAttrIdx);                     \
-    HUD_MEMBER(int, mPad3)
+    HUD_MEMBER(int, mCryptoIdAttrIdx);                     \
+    HUD_MEMBER(int, mCryptoUVAttrIdx)
 
 
 #define PATH_INTEGRATOR_VALIDATION                                 \
@@ -86,8 +86,7 @@
     HUD_VALIDATE(PathIntegrator, mVolumeIndirectSamples);          \
     HUD_VALIDATE(PathIntegrator, mPad2);                           \
     HUD_VALIDATE(PathIntegrator, mDeepIDAttrIdxs);                 \
+    HUD_VALIDATE(PathIntegrator, mCryptoIdAttrIdx);                \
     HUD_VALIDATE(PathIntegrator, mCryptoUVAttrIdx);                \
-    HUD_VALIDATE(PathIntegrator, mDeepIDAttrIdxs);                 \
-    HUD_VALIDATE(PathIntegrator, mPad3);                           \
     HUD_END_VALIDATION
 

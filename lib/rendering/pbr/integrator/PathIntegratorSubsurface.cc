@@ -463,10 +463,8 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                             ray);
 
             // Recurse
-            scene_rdl2::math::Color contribution;
             float transparency;
             ++sequenceID;
-            bool hitVolume = false;
 
             // Append this lobe's lightset to the parent lobes' lists
             Rdl2LightSetList newParentLobeLightSets = parentLobeLightSets;
@@ -474,15 +472,9 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                 newParentLobeLightSets.append(lobeLightSet);
             }
 
-            IndirectRadianceType indirectRadianceType = computeRadianceRecurse(
-                    pbrTls, ray, sp, nextPv, &lobe,
-                    contribution, transparency, vt,
-                    sequenceID, aovs, nullptr, nullptr, nullptr, nullptr, nullptr, false, hitVolume, newParentLobeLightSets);
-            if (indirectRadianceType != NONE) {
-                // Accumulate radiance, but only accumulate indirect or direct
-                // contribution
-                radiance += contribution;
-            }
+            radiance += computeRadianceRecurse1(pbrTls, ray, sp, nextPv, &lobe,
+                                                transparency, vt,
+                                                sequenceID, aovs, /* cryptomatteFlags = */ 0, newParentLobeLightSets);
         }
         //------------------------------
         // Compute direct lighting contribution with MIS if needed.
@@ -563,6 +555,45 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
     }
     return radiance;
 }
+
+
+scene_rdl2::math::Color
+PathIntegrator::computeRadianceSubsurface(pbr::TLState *pbrTls,
+        const Bsdf &bsdf, Subpixel &sp, PathVertex &pv,
+        const RayDifferential &ray, const Intersection &isect,
+        const BsdfSlice &slice,
+        const LightSet &lightSet, bool doIndirect,
+        float rayEpsilon, float shadowRayEpsilon,
+        unsigned &sequenceID, scene_rdl2::math::Color &ssAov, float *aovs,
+        const Rdl2LightSetList& parentLobeLightSets) const
+{
+    pv.subsurfaceDepth += 1;
+
+    scene_rdl2::math::Color radiance(0.0f);
+
+    if (bsdf.getBssrdfCount() > 0) {
+        // Option 1: diffusion profile (bssrdf) approach
+        for (int bssrdfIdx = 0; bssrdfIdx < bsdf.getBssrdfCount(); ++bssrdfIdx) {
+            const shading::Bssrdf *bssrdf = bsdf.getBssrdf(bssrdfIdx);
+            // Stop the accumulator here since the subsurface accumulator will be
+            // started up inside of computeRadianceSubsurface as needed.
+            radiance += computeRadianceDiffusionSubsurface(pbrTls, bsdf, sp, pv, ray,
+                isect, slice, *bssrdf, lightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
+                sequenceID, ssAov, aovs, parentLobeLightSets);
+        }
+    } else {
+        MNRY_ASSERT(bsdf.getVolumeSubsurface() != nullptr);
+        // Option 2: path trace volumetric approach (a.k.a. random walk)
+        radiance += computeRadiancePathTraceSubsurface(pbrTls, bsdf, sp, pv, ray, isect,
+                        *bsdf.getVolumeSubsurface(), lightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
+                        sequenceID, ssAov, aovs);
+    }
+
+    checkForNan(radiance, "Subsurface scattering", sp, pv, ray, isect);
+
+    return radiance;
+}
+
 
 scene_rdl2::math::Color
 PathIntegrator::computeRadianceDiffusionSubsurface(pbr::TLState *pbrTls,

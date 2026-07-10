@@ -3,7 +3,9 @@
 
 #include "Cryptomatte.h"
 
-#include <cstring> // for size_t
+#include <moonray/rendering/shading/AttributeKey.h>
+#include <moonray/rendering/shading/Intersection.h>
+#include <moonray/rendering/shading/State.h>
 
 namespace moonray {
 namespace pbr {
@@ -50,18 +52,58 @@ void CryptomatteBuffer::clear()
     mFinalized = false;
 }
 
-void CryptomatteBuffer::addSampleScalar(unsigned x, unsigned y, float sampleId, float weight,
-                                        const scene_rdl2::math::Vec3f& position,
-                                        const scene_rdl2::math::Vec3f& p0,
-                                        const scene_rdl2::math::Vec3f& normal,
-                                        const scene_rdl2::math::Color4& beauty,
-                                        const scene_rdl2::math::Vec3f refP,
-                                        const scene_rdl2::math::Vec3f refN,
-                                        const scene_rdl2::math::Vec2f uv,
+
+void computeCryptomatteResults(CryptomatteResults &results, int cryptoIdAttrIdx, int cryptoUVAttrIdx,
+                               moonray::shading::Intersection &isect)
+{
+    results.mHit      = true;
+    results.mPosition = isect.getP();
+    results.mNormal   = isect.getN();
+
+    results.mId = 0.0f;
+    if (cryptoIdAttrIdx >= 0) {
+        moonray::shading::TypedAttributeKey<float> cryptoIdAttrKey(cryptoIdAttrIdx);
+        if (isect.isProvided(cryptoIdAttrKey)) {
+            results.mId = isect.getAttribute(cryptoIdAttrKey);
+        }
+    }
+
+    results.mUV = isect.getSt();
+    if (cryptoUVAttrIdx >= 0) {
+        moonray::shading::TypedAttributeKey<scene_rdl2::rdl2::Vec2f> cryptoUVAttrKey(cryptoUVAttrIdx);
+        if (isect.isProvided(cryptoUVAttrKey)) {
+            results.mUV = isect.getAttribute(cryptoUVAttrKey);
+        }
+    }
+
+    results.mP0 = scene_rdl2::math::zero;
+    if (isect.isProvided(shading::StandardAttributes::sP0)) {
+        results.mP0 = scene_rdl2::math::transformPoint(isect.getGeometryObject()->getSceneClass().getSceneContext()->getRender2World()->inverse(),
+                                                       isect.getAttribute(shading::StandardAttributes::sP0));
+    }
+
+    shading::State sstate(&isect);
+    sstate.getRefP(results.mRefP);
+    sstate.getRefN(results.mRefN);
+}
+
+
+void CryptomatteBuffer::addSampleScalar(unsigned x, unsigned y, float weight,
+                                        const CryptomatteResults &cryptomatteResults,
+                                        const scene_rdl2::math::Color &beauty,
                                         unsigned presenceDepth,
                                         int cryptoType)
 {
     PixelEntry &pixelEntry = mPixelEntries[cryptoType][y * mWidth + x];
+
+    const float                    sampleId = cryptomatteResults.mId;
+    const scene_rdl2::math::Vec3f &position = cryptomatteResults.mPosition;
+    const scene_rdl2::math::Vec3f &p0       = cryptomatteResults.mP0;
+    const scene_rdl2::math::Vec3f &normal   = cryptomatteResults.mNormal;
+    const scene_rdl2::math::Vec3f &refP     = cryptomatteResults.mRefP;
+    const scene_rdl2::math::Vec3f &refN     = cryptomatteResults.mRefN;
+    const scene_rdl2::math::Vec2f &uv       = cryptomatteResults.mUV;
+    const scene_rdl2::math::Color4 beauty4  = scene_rdl2::math::Color4(beauty);
 
     // Iterate over fragments stored at current pixel and see if we can merge the sample in to any of them
     for (Fragment &fragment : pixelEntry.mFragments) {
@@ -71,19 +113,19 @@ void CryptomatteBuffer::addSampleScalar(unsigned x, unsigned y, float sampleId, 
         if (fragMatches) {
             fragment.mCoverage += weight;
             fragment.mPosition += position;
-            fragment.mP0 += p0;
-            fragment.mNormal += normal;
-            fragment.mBeauty += beauty;
-            fragment.mRefP += refP;
-            fragment.mRefN += refN;
-            fragment.mUV += uv;
+            fragment.mP0       += p0;
+            fragment.mNormal   += normal;
+            fragment.mBeauty   += beauty4;
+            fragment.mRefP     += refP;
+            fragment.mRefN     += refN;
+            fragment.mUV       += uv;
             fragment.mNumSamples++;
             return;
         }
     }
 
     // No match, so add a new fragment.
-    pixelEntry.mFragments.push_back(Fragment(sampleId, weight, position, p0, normal, beauty,
+    pixelEntry.mFragments.push_back(Fragment(sampleId, weight, position, p0, normal, beauty4,
                                              refP, refN, uv, presenceDepth));
 }
 

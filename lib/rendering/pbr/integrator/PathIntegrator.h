@@ -143,7 +143,8 @@ public:
         float *mVolumeAovs;
 
         // intersection results
-        bool mHitDeep;
+        bool mHitGeom;
+        bool mHitVolume;
         float mDeepIDs[7];  // Also see types.hh DEEP_DATA_MEMBERS
     };
 
@@ -190,6 +191,15 @@ public:
     scene_rdl2::math::Color computeColorFromIntersection(pbr::TLState *pbrTls, int pixelX, int pixelY,
             int subpixelIndex, int pixelSamples, const Sample& sample,
             ComputeRadianceAovParams &aovParams, rndr::FastRenderMode fastMode) const;
+
+    scene_rdl2::math::Color computeRadianceSubsurface(pbr::TLState *pbrTls,
+            const shading::Bsdf &bsdf, Subpixel &sp, PathVertex &pv,
+            const mcrt_common::RayDifferential &ray, const shading::Intersection &isect,
+            const shading::BsdfSlice &slice,
+            const LightSet &lightSet, bool doIndirect,
+            float rayEpsilon, float shadowRayEpsilon,
+            unsigned &sequenceID, scene_rdl2::math::Color &ssAov, float *aovs,
+            const Rdl2LightSetList& parentLobeLightSets) const;
 
     scene_rdl2::math::Color computeRadianceDiffusionSubsurface(pbr::TLState *pbrTls, const shading::Bsdf &bsdf,
             Subpixel &sp, const PathVertex &pv,
@@ -268,43 +278,6 @@ public:
     }
 
 private:
-    enum IndirectRadianceType
-    {
-        NONE = 0,
-        SURFACE = 1 << 0,
-        VOLUME  = 1 << 1,
-        ALL = SURFACE | VOLUME
-    };
-
-
-    struct CryptomatteParams
-    {
-        // intersection results
-        bool mHit;
-        float mId;
-        scene_rdl2::math::Vec3f mPosition;
-        scene_rdl2::math::Vec3f mP0;
-        scene_rdl2::math::Vec3f mNormal;
-        scene_rdl2::math::Color4 mBeauty;
-        scene_rdl2::math::Vec3f mRefP;
-        scene_rdl2::math::Vec3f mRefN;
-        scene_rdl2::math::Vec2f mUV;
-        CryptomatteBuffer* mCryptomatteBuffer;
-
-        void init(CryptomatteBuffer* buffer) {
-            mHit = false;
-            mId = 0.f;
-            mP0 = scene_rdl2::math::Vec3f(0.f);
-            mPosition = scene_rdl2::math::Vec3f(0.f);
-            mNormal = scene_rdl2::math::Vec3f(0.f);
-            mBeauty = scene_rdl2::math::Color4(0.f);
-            mRefP = scene_rdl2::math::Vec3f(0.f);
-            mRefN = scene_rdl2::math::Vec3f(0.f);
-            mUV = scene_rdl2::math::Vec2f(0.f);
-            mCryptomatteBuffer = buffer;
-        }
-    };
-
     /// Copy is disabled
     PathIntegrator(const PathIntegrator&) = delete;
     PathIntegrator &operator=(const PathIntegrator&) = delete;
@@ -347,8 +320,7 @@ private:
             const scene_rdl2::rdl2::Material* newPriorityList[4], int newPriorityListCount[4],
             scene_rdl2::math::Color &radiance, unsigned &sequenceID,
             float *aovs,
-            CryptomatteParams *reflectedCryptomatteParams,
-            CryptomatteParams *refractedCryptomatteParams,
+            uint32_t cryptomatteFlags,
             const Rdl2LightSetList& parentLobeLightSets) const;
 
     // compute volume emission line integral along the ray
@@ -371,8 +343,7 @@ private:
             int newPriorityListCount[4], const LightSet &activeLightSet, const scene_rdl2::math::Vec3f *cullingNormal,
             float rayEpsilon, float shadowRayEpsilon, const scene_rdl2::math::Color &ssAov, unsigned &sequenceID,
             float *aovs,
-            CryptomatteParams *reflectedCryptomatteParams,
-            CryptomatteParams *refractedCryptomatteParams,
+            uint32_t cryptomatteFlags,
             const Rdl2LightSetList& parentLobeLightSets) const;
 
     // compute the emission contribution from volumes emitting energy
@@ -471,18 +442,22 @@ private:
             bool& reachTransmittanceThreshold,
             DeepParams* deepParams) const;
 
-    // return the type of indirect radiance contribution along ray
-    // (it can be a surface intersection that contributes bounce lighting or
-    // volume emission/in-scattering accumulated along the ray)
-    IndirectRadianceType computeRadianceRecurse(pbr::TLState *pbrTls,
+    // Streamlined version of the original computeRadianceRecurse() function, specialized to ray depth 0
+    scene_rdl2::math::Color computeRadianceRecurse0(pbr::TLState *pbrTls,
             mcrt_common::RayDifferential &ray,
             Subpixel &sp, const PathVertex &pv, const shading::BsdfLobe *lobe,
-            scene_rdl2::math::Color &radiance, float &transparency, VolumeTransmittance& vt,
+            float &transparency, VolumeTransmittance& vt,
             unsigned &sequenceID, float *aovs, float *depth,
-            DeepParams* deepParams, CryptomatteBuffer *cryptomatteBuffer,
-            CryptomatteParams *reflectedCryptomatteParams,
-            CryptomatteParams *refractedCryptomatteParams,
-            bool ignoreVolumes, bool &hitVolume,
+            DeepParams* deepParams, uint32_t cryptomatteFlags,
+            const Rdl2LightSetList& parentLobeLightSets) const;
+
+    // Streamlined version of the original computeRadianceRecurse() function, specialized to ray depth 1+
+    scene_rdl2::math::Color computeRadianceRecurse1(pbr::TLState *pbrTls,
+            mcrt_common::RayDifferential &ray,
+            Subpixel &sp, const PathVertex &pv, const shading::BsdfLobe *lobe,
+            float &transparency, VolumeTransmittance& vt,
+            unsigned &sequenceID, float *aovs,
+            uint32_t cryptomatteFlags,
             const Rdl2LightSetList& parentLobeLightSets) const;
 
     scene_rdl2::math::Color computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
@@ -524,6 +499,21 @@ private:
                        float rayEpsilon, float shadowRayEpsilon,
                        const Subpixel &sp, unsigned sequenceID, const scene_rdl2::math::Color& throughput,
                        float& presence, int receiverId, bool isVolume = false) const;
+
+    // Auxiliary function to compute the radiance gathered along a presence ray (the ray which continues on
+    // through a surface with non-binary presence), appropriately attenuated by the presence value.
+    scene_rdl2::math::Color computeRadiancePresence(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+            Subpixel &sp, const PathVertex &prevPv, PathVertex &pv, const shading::BsdfLobe *lobe,
+            float &transparency, float &presenceTransparency, VolumeTransmittance& vt, unsigned sequenceID, float *aovs,
+            uint32_t cryptomatteFlags, const Rdl2LightSetList& parentLobeLightSets,
+            const scene_rdl2::rdl2::Material* newPriorityList[4], int newPriorityListCount[4],
+            int currentVolumeDepth, float rayEpsilon, float presence) const;
+
+    // Auxiliary function to compute the in-camera radiance of a light hit directly by a primary ray. Not called
+    // for non-primary rays since those contributions are already gathered by light & bsdf sampling.
+    scene_rdl2::math::Color computeRadianceLightsInCamera(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+            Subpixel &sp, const PathVertex &pv, const shading::Intersection &isect, unsigned &sequenceID, float *aovs,
+            bool hitGeom) const;
 
     PATH_INTEGRATOR_MEMBERS;
 };

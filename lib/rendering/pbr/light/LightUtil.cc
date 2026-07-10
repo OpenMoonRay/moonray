@@ -43,7 +43,6 @@ computeActiveLights(scene_rdl2::alloc::Arena *arena,
                     const PathVertex * const pv,
                     float rayTime,
                     LightSet &lightSet,
-                    bool &hasRayTerminatorLights,
                     const Rdl2LightSetList& parentLobeLightSets)
 {
     MNRY_ASSERT(arena);
@@ -74,7 +73,6 @@ computeActiveLights(scene_rdl2::alloc::Arena *arena,
     }
 
     int activeLightCount = 0;
-    hasRayTerminatorLights = false;
 
     if (lightList) {
         size_t upperBound = lightList->size();
@@ -103,7 +101,6 @@ computeActiveLights(scene_rdl2::alloc::Arena *arena,
                 light->canIlluminate(pos, normal, rayTime, radius, (*lightFilterLists)[i], pv)) {
                 lightIdMap[i] = activeLightCount;
                 activeLightId[activeLightCount++] = i;
-                hasRayTerminatorLights |= light->getIsRayTerminator();
             } else {
                 lightIdMap[i] = -1;
             }

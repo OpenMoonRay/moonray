@@ -176,10 +176,9 @@ computeLightContributions(mcrt_common::ThreadLocalState *tls, const Scene* scene
 
     // Get the lights contributing to this pixel
     LightSet lightSet;
-    bool hasRayTerminatorLights;
     Rdl2LightSetList lightSetList;
     computeActiveLights(&tls->mArena, scene, isect, normalPtr, bsdf, /* PathVertex = */ nullptr,
-            /* rayTime = */ 0.f, lightSet, hasRayTerminatorLights, lightSetList);
+            /* rayTime = */ 0.f, lightSet, lightSetList);
 
     // Populate the array with the light and contribution data to be returned.
     int count = lightSet.getLightCount();

@@ -8,11 +8,15 @@
 #include <scene_rdl2/common/fb_util/PixelBuffer.h>
 #include <scene_rdl2/scene/rdl2/RenderOutput.h>
 
+#include <cstring>
 #include <list>
 #include <tbb/mutex.h>
 #include <vector>
 
 namespace moonray {
+
+namespace shading { class Intersection; }
+
 namespace pbr {
 
 /*
@@ -61,6 +65,35 @@ enum CryptomatteType {
     CRYPTOMATTE_TYPE_REFRACTED,
     NUM_CRYPTOMATTE_TYPES
 };
+
+enum CryptomatteFlags {
+    CRYPTOMATTE_FLAG_REGULAR   = (1 << CRYPTOMATTE_TYPE_REGULAR),
+    CRYPTOMATTE_FLAG_REFLECTED = (1 << CRYPTOMATTE_TYPE_REFLECTED),
+    CRYPTOMATTE_FLAG_REFRACTED = (1 << CRYPTOMATTE_TYPE_REFRACTED),
+
+    CRYPTOMATTE_FLAGS_ALL      = (CRYPTOMATTE_FLAG_REGULAR | CRYPTOMATTE_FLAG_REFLECTED | CRYPTOMATTE_FLAG_REFRACTED)
+};
+
+struct CryptomatteResults
+{
+    // intersection results
+    bool mHit;
+    float mId;
+    scene_rdl2::math::Vec3f mPosition;
+    scene_rdl2::math::Vec3f mP0;
+    scene_rdl2::math::Vec3f mNormal;
+    scene_rdl2::math::Vec3f mRefP;
+    scene_rdl2::math::Vec3f mRefN;
+    scene_rdl2::math::Vec2f mUV;
+
+    void init() {
+        memset(this, 0, sizeof(CryptomatteResults));
+    }
+};
+
+
+void computeCryptomatteResults(CryptomatteResults &results, int cryptoIdAttrIdx, int cryptoUVAttrIdx,
+                               moonray::shading::Intersection &isect);
 
 
 class CryptomatteBuffer
@@ -129,14 +162,9 @@ public:
 
     // -----------------------------------------------------------------------------------------------------------------
 
-    void addSampleScalar(unsigned x, unsigned y, float id, float weight,
-                         const scene_rdl2::math::Vec3f& position,
-                         const scene_rdl2::math::Vec3f& p0,
-                         const scene_rdl2::math::Vec3f& normal,
-                         const scene_rdl2::math::Color4& beauty,
-                         const scene_rdl2::math::Vec3f refP,
-                         const scene_rdl2::math::Vec3f refN,
-                         const scene_rdl2::math::Vec2f uv,
+    void addSampleScalar(unsigned x, unsigned y, float weight,
+                         const CryptomatteResults &cryptomatteResults,
+                         const scene_rdl2::math::Color &beauty,
                          unsigned presenceDepth,
                          int cryptoType);
 

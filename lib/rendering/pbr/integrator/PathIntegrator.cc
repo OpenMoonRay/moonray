@@ -225,6 +225,8 @@ PathIntegrator::update(const FrameState &fs, const PathIntegratorParams& params)
         mDeepIDAttrIdxs.push_back(deepIDAttrKey.getIndex());
     }
 
+    mCryptoIdAttrIdx = mDeepIDAttrIdxs.empty() ? -1 : mDeepIDAttrIdxs[0];
+
     scene_rdl2::rdl2::String cryptoUVAttributeName = vars.get(scene_rdl2::rdl2::SceneVariables::sCryptoUVAttributeName);
     if (!cryptoUVAttributeName.empty()) {
         shading::TypedAttributeKey<scene_rdl2::rdl2::Vec2f> cryptoUVAttrKey(cryptoUVAttributeName);
@@ -344,71 +346,18 @@ shadeMaterial(mcrt_common::ThreadLocalState *tls, const scene_rdl2::rdl2::Materi
     }
 }
 
-// Auxilliary function to add a node in the ray tree. The members of the node will change frequently while development
-// of disintegrator work is ongoing, but the basic idea is to record enough information at each hit point that any
-// rendering computation that needs to be performed for that ray bounce can be deferred to a later pass and still have
-// access to all the information it needs.
-
-void
-addNode(moonray::pbr::TLState *pbrTls, Subpixel &sp, const PathVertex &pv, const shading::Intersection &isect,
-        const shading::Bsdf &bsdf, const shading::BsdfSlice &slice, const shading::BsdfLobe *parentLobe,
-        int sequenceID, float rayEpsilon, float rayDirFootprint)
-{
-    // Allocate new node. We use the subpixelArena so that the nodes will persist for the lifespan of the Subpixel
-    scene_rdl2::alloc::Arena *subpixelArena = pbrTls->mSubpixelArena;
-    DeferredNode *node = subpixelArena->alloc<DeferredNode>();
-
-    // The node needs to record the bsdf, but instead of copying the whole bsdf struct, which is large, we copy
-    // just the lobe pointers since on average a bsdf has considerably fewer than the max number supported (16).
-    const shading::BsdfLobe **lobePtrs = nullptr;
-    const int lobeCount = bsdf.getLobeCount();
-    MNRY_ASSERT(lobeCount > 0);     // Zero lobeCount would cause early-out before we ever got here
-    lobePtrs = subpixelArena->allocArray<const shading::BsdfLobe *>(lobeCount);
-    for (int i = 0; i < lobeCount; i++) {
-        lobePtrs[i] = bsdf.getLobe(i);
-    }
-
-    // Set node members
-    node->mThroughput      = pv.pathThroughput;
-    node->mNonMirrorDepth  = pv.nonMirrorDepth;
-    node->mParentLobe      = parentLobe;
-    node->mLobePtrs        = lobePtrs;
-    node->mLobeCount       = lobeCount;
-    node->mBsdfIsSpherical = bsdf.getIsSpherical();
-    node->mSlice           = slice;
-    node->mRayEpsilon      = rayEpsilon;
-    node->mSequenceID      = sequenceID;
-    node->mIntersection    = isect;
-    node->mRayDirFootprint = rayDirFootprint;
-    node->mAlbedo          = bsdf.albedo(slice);
-
-    // Link new node into list
-    node->mNext = nullptr;
-    *sp.mDeferredNodesTailPtr = node;
-    sp.mDeferredNodesTailPtr = &node->mNext;
-    sp.mNumDeferredNodes++;
-}
 
 // BsdfLobe is passed in so that we can track the lobe type which generated
 // the ray for ray debugging purposes. Other than that, it's not needed.
-PathIntegrator::IndirectRadianceType
-PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+scene_rdl2::math::Color
+PathIntegrator::computeRadianceRecurse0(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
         Subpixel &sp, const PathVertex &prevPv, const shading::BsdfLobe *lobe,
-        scene_rdl2::math::Color &radiance, float &transparency, VolumeTransmittance& vt,
+        float &transparency, VolumeTransmittance& vt,
         unsigned &sequenceID, float *aovs, float *depth,
-        DeepParams* deepParams, CryptomatteBuffer *cryptomatteBuffer,
-        CryptomatteParams *reflectedCryptomatteParamsPtr,
-        CryptomatteParams *refractedCryptomatteParamsPtr,
-        bool ignoreVolumes, bool &hitVolume,
+        DeepParams* deepParams, uint32_t cryptomatteFlags,
         const Rdl2LightSetList& parentLobeLightSets) const
 {
-    CHECK_CANCELLATION(pbrTls, return NONE);
-
-    // TODO: proper depth control when recursing here from computeRadianceVolume().
-    // Here we use a temporary mechanism for limiting it to a single level of recursion,
-    // i.e. we pass in 'true' to hitVolume (which previously wasn't used to pass
-    // anything in - only out).
-    bool wasFromAVolume = hitVolume;
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
 
     // Turn off profiling integrator profiling for the first part of this
     // function. It's turned back on later.
@@ -416,33 +365,25 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
 
     const FrameState &fs = *pbrTls->mFs;
     const Scene *scene = MNRY_VERIFY(pbrTls->mFs->mScene);
-
     Statistics &stats = pbrTls->mStatistics;
-
     const AovSchema &aovSchema = *fs.mAovSchema;
-
-    scene_rdl2::alloc::Arena *arena = pbrTls->mArena;
-    SCOPED_MEM(arena);
-
-    radiance = scene_rdl2::math::sBlack;
+    const LightAovs &lightAovs = *fs.mLightAovs;
+    const MaterialAovs &materialAovs = *fs.mMaterialAovs;
+    scene_rdl2::math::Color radiance = scene_rdl2::math::sBlack;
     transparency = 0.0f;
-
     vt.reset();
-
     scene_rdl2::math::Color ssAov = scene_rdl2::math::sBlack;
-    IndirectRadianceType indirectRadianceType = NONE;
+    int lobeType = (lobe == nullptr) ? 0 : lobe->getType();
+
     //---------------------------------------------------------------------
     // Trace continuation ray
-
-    // Find next vertex of the path. The intersectRay call doesn't intersect
-    // with any lights, only geometry.
-    // TODO: scale differentials if we want to use for geometry LOD
     shading::Intersection isect;
-
-    int lobeType = (lobe == nullptr) ? 0 : lobe->getType();
     bool hitGeom = scene->intersectRay(pbrTls->mTopLevelTls, ray, isect, lobeType);
+
+    //---------------------------------------------------------------------
+    // Get deep ids
     if (hitGeom && deepParams) {
-        deepParams->mHitDeep = true;
+        deepParams->mHitGeom = true;
         for (size_t i = 0; i < mDeepIDAttrIdxs.size(); i++) {
             shading::TypedAttributeKey<float> deepIDAttrKey(mDeepIDAttrIdxs[i]);
             if (isect.isProvided(deepIDAttrKey)) {
@@ -453,28 +394,51 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
         }
     }
 
+    //---------------------------------------------------------------------
     // Record ray for the path visualizer
     if (fs.mSimulationMode) {
-        if (ray.getDepth() == 0) {
-            fs.mScene->recordCameraRay(ray, sp.mPixel);
-        } else {
-            if (hitGeom) {
-                fs.mScene->recordIndirectRay(ray, sp.mPixel, lobeType);
-            }
-        }
+        fs.mScene->recordCameraRay(ray, sp.mPixel);
     }
 
-    // Prevent aliasing in the visibility aov by accounting for 
-    // primary rays that don't hit anything
-    if (ray.getDepth() == 0 && !hitGeom) {
-        
-        // If we're on the edge of the geometry, some rays should count as "hits", some as "misses". Here, 
-        // we're adding light_sample_count * lights number of "misses" to the visibility aov to account for 
-        // the light samples that couldn't be taken because the primary ray doesn't hit anything. 
-        // This improves aliasing on the edges.
+    //---------------------------------------------------------------------
+    // Set up next vertex on path
+    PathVertex pv(prevPv);
+
+    //--------------------------------------------------------------------
+    // Volumes
+    bool hitVolume = false;
+
+    // computeRadianceVolume() increases the pv.volumeDepth. We want the presence continuation ray's volume depth
+    // to be unchanged, so we restore it. Not doing this can cause problems with presence objects inside volumes
+    // if the max volume depth is low (default = 1). They will appear to 'hold out' the volume behind them as the
+    // max volume depth is reached.
+    int currentVolumeDepth = pv.volumeDepth;
+    float volumeSurfaceT = scene_rdl2::math::sMaxValue;
+
+    // We only ignore volumes in the case where there's a deep buffer but we hit a volume, in which case we're now
+    // calling cRR0() again to obtain the hard surface results without the volume, to add them to the deep buffer
+    bool ignoreVolumes = (deepParams && deepParams->mHitVolume);
+    if (!ignoreVolumes) {
+        hitVolume = computeRadianceVolume(pbrTls, ray, sp, pv, lobeType,
+            radiance, sequenceID, vt, aovs, deepParams, nullptr, &volumeSurfaceT);
+        if (deepParams) deepParams->mHitVolume = hitVolume;
+        pv.pathThroughput *= vt.transmittance();
+    }
+
+    //---------------------------------------------------------------------
+    // Add contribution from light hit by the primary ray
+    radiance += computeRadianceLightsInCamera(pbrTls, ray, sp, pv, isect, sequenceID, aovs, hitGeom);
+    
+    //---------------------------------------------------------------------
+    // Early out if no geometry hit
+    if (!hitGeom) {
         if (aovs) {
-            const LightAovs &lightAovs = *fs.mLightAovs;
-            const AovSchema &aovSchema = *fs.mAovSchema;
+            // Prevent aliasing in the visibility aov by accounting for primary rays that don't hit anything.
+            // If we're on the edge of the geometry, some rays should count as "hits", some as "misses". Here, 
+            // we're adding light_sample_count * lights number of "misses" to the visibility aov to account for 
+            // the light samples that couldn't be taken because the primary ray doesn't hit anything. 
+            // This improves aliasing on the edges.
+
             // predict the number of light samples that would have been taken if the ray hit geom
             int totalLightSamples = mLightSamples * scene->getLightCount();
 
@@ -482,102 +446,30 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
             // in the lpe, this would be black anyway. If there are subpixels that DO hit a surface that is
             // included in the lpe, this addition prevents aliasing. 
             aovAccumVisibilityAttempts(pbrTls, aovSchema, lightAovs, totalLightSamples, aovs);
+
+            // Accumuate background aovs
+            aovAccumBackgroundExtraAovs(pbrTls, fs, pv, aovs);
+
+            // Did we hit a volumes?
+            if (hitVolume && volumeSurfaceT < scene_rdl2::math::sMaxValue) {
+                aovSetStateVarsVolumeOnly(pbrTls, aovSchema, volumeSurfaceT, ray, *scene, pv.pathPixelWeight, aovs);
+            }
         }
+
+        transparency = reduceTransparency(vt.mTransmittanceAlpha);
+        return radiance;
     }
 
-    PathVertex pv(prevPv);
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
 
-    //--------------------------------------------------------------------
-    // Volumes
-    hitVolume = false;
-
-    // computeRadianceVolume() increases the pv.volumeDepth.  We want the presence
-    // continuation ray's volume depth to be unchanged, so we restore it.
-    // Not doing this can cause problems with presence objects inside volumes
-    // if the max volume depth is low (default = 1).  They will appear to 'hold out'
-    // the volume behind them as the max volume depth is reached.
-    int currentVolumeDepth = pv.volumeDepth;
-    float volumeSurfaceT = scene_rdl2::math::sMaxValue;
-
-    if (!ignoreVolumes) {
-        hitVolume = computeRadianceVolume(pbrTls, ray, sp, pv, lobeType,
-            radiance, sequenceID, vt, aovs, deepParams, nullptr, &volumeSurfaceT);
-        if (hitVolume) {
-            indirectRadianceType = IndirectRadianceType(indirectRadianceType | VOLUME);
-        }
-        pv.pathThroughput *= vt.transmittance();
-    }
-
-    if (!hitGeom && aovs) {
-        // accumuate background aovs
-        aovAccumBackgroundExtraAovs(pbrTls, fs, pv, aovs);
+    //---------------------------------------------------------------------
+    // Early return with error color if isect doesn't provide all the required attributes the shader requested
+    if (!isect.hasAllRequiredAttributes()) {
+        radiance += pv.pathThroughput * fs.mFatalColor;
+        return radiance;
     }
 
     //---------------------------------------------------------------------
-    // Code for rendering lights, only executed for primary rays since lights
-    // appear in deeper passes already.
-    if ((ray.getDepth() == 0)) {
-        LightIntersection hitLightIsect;
-        int numHits = 0;
-        SequenceIDIntegrator sid(0, sp.mPixel, sp.mSubpixelIndex,
-            SequenceType::IndexSelection, sequenceID);
-        IntegratorSample1D lightChoiceSamples(sid);
-        const Light *hitLight = scene->intersectVisibleLight(ray,
-            hitGeom ? ray.getEnd() : sInfiniteLightDistance,
-            lightChoiceSamples, hitLightIsect, numHits);
-
-        if (hitLight != nullptr) {
-            // Evaluate the radiance on the selected light in camera.
-            // Note: we multiply the radiance contribution by the number of
-            // lights hit. This is because we want to compute the sum of all
-            // contributing lights, but we're stochastically sampling just one.
-            LightFilterRandomValues lightFilterR = {
-                scene_rdl2::math::Vec2f(0.f, 0.f), 
-                scene_rdl2::math::Vec3f(0.f, 0.f, 0.f)}; // light filters don't apply to camera rays
-            scene_rdl2::math::Color lightContribution = pv.pathThroughput * numHits *
-                hitLight->eval(pbrTls->mTopLevelTls,
-                    ray.getDirection(), ray.getOrigin(), lightFilterR,
-                    ray.getTime(), hitLightIsect, true, nullptr, nullptr, ray.getDirFootprint(), nullptr, nullptr);
-            radiance += lightContribution;
-
-            checkForNan(radiance, "Camera visible lights", sp, pv, ray, isect);
-
-            // LPE
-            if (aovs) {
-                EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
-                const LightAovs &lightAovs = *fs.mLightAovs;
-                // transition
-                int lpeStateId = pv.lpeStateId;
-                lpeStateId = lightAovs.lightEventTransition(pbrTls, lpeStateId, hitLight);
-                // accumulate matching aovs
-                aovAccumLightAovs(pbrTls, *fs.mAovSchema, *fs.mLightAovs,
-                    lightContribution, nullptr, AovSchema::sLpePrefixNone, lpeStateId, aovs);
-            }
-        }
-    }
-
-    if (!hitGeom) {
-        transparency = reduceTransparency(vt.mTransmittanceAlpha);
-
-        // Did we hit a volume and do we have volume depth/position AOVs?
-        if (ray.getDepth() == 0 && hitVolume && volumeSurfaceT < scene_rdl2::math::sMaxValue) {
-            aovSetStateVarsVolumeOnly(pbrTls, aovSchema, volumeSurfaceT, ray,
-                                      *scene, pv.pathPixelWeight, aovs);
-        }
-
-        return indirectRadianceType;
-    }
-    indirectRadianceType = IndirectRadianceType(indirectRadianceType | SURFACE);
-
-    CHECK_CANCELLATION(pbrTls, return NONE);
-
-    // Early return with error color if isect doesn't provide all the
-    // required attributes shader request
-    if (!isect.hasAllRequiredAttributes()) {
-        radiance += pv.pathThroughput * fs.mFatalColor;
-        return indirectRadianceType;
-    }
-
     // Finalize Intersection setup.
     geom::initIntersectionPhase2(isect,
                                  pbrTls->mTopLevelTls,
@@ -593,8 +485,6 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
     float tHit = ray.tfar;
 
     //---------------------------------------------------------------------
-    // Run the material shader at the ray intersection point to get the Bsdf
-
     // Transfer the ray to its intersection before we run shaders. This is
     // needed for texture filtering based on ray differentials.
     // Also scale the final differentials by a user factor. This is left until
@@ -622,25 +512,11 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
 
     shading::TLState* shadingTls = pbrTls->mTopLevelTls->mShadingTls.get();
 
-    // Presence handling code for regular rays
-    // Need to continue the current ray through the partially present geometry.
+    //---------------------------------------------------------------------
+    // Get material's presence and potentially convert it stochastically to 0 or 1
     float presence = shading::presence(material, shadingTls, shading::State(&isect));
-
-    // Check to see if we can use stochastic presence method
-    if (luminance(pv.pathThroughput) < (1.0f - mPresenceQuality)) {
-        SequenceIDIntegrator sidPresence( sp.mPixel,
-                                          sp.mSubpixelIndex,
-                                          SequenceType::Presence,
-                                          sequenceID,
-                                          pv.presenceDepth ); // note presence depth
-        IntegratorSample1D prSamples(sidPresence);
-        float prSample;
-        prSamples.getSample(&prSample, pv.presenceDepth);
-        if (prSample < presence) {
-            presence = 1.f;
-        } else {
-            presence = 0.f;
-        }
+    if (presence != 1.0f && presence != 0.0f && luminance(pv.pathThroughput) < (1.0f - mPresenceQuality)) {
+        presence = stochasticPresence(sp, pv, sequenceID, presence);
     }
 
     // Some NPR materials that want to allow for completely arbitrary shading normals
@@ -670,154 +546,22 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
     scene_rdl2::math::Color earlyTerminatorPathThroughput = pv.pathThroughput;
     float earlyTerminatorPathPixelWeight = pv.pathPixelWeight;
 
+    // Presence handling: This will continue the current ray through the partially present geometry.
     scene_rdl2::math::Color presenceRadiance = scene_rdl2::math::sBlack;
     float presenceTransparency = 0.f;
     if (presence < 1.f - scene_rdl2::math::sEpsilon) {
-        float totalPresence = (1.0f - prevPv.totalPresence) * presence;
-
-        float rayNear = rayEpsilon;
-        float rayFar = ray.getOrigTfar() - ray.tfar;
-        if (totalPresence >= mPresenceThreshold || prevPv.presenceDepth >= mMaxPresenceDepth) {
-            // The cleanest way to terminate presence traversal is to make it impossible for the
-            // presence continuation ray to hit any more geometry.  This means we assume empty space
-            // past the last presence intersection, which will set the pixel's alpha to the
-            // total accumulated presence so far.  This is done by setting the ray's near and far
-            // distances to a large value.
-            // The other option is to assume a solid material past the last presence intersection.
-            // We don't want this because that would set the pixel alpha to 1 when we really want
-            // the alpha to be the total accumulated presence.
-            // Intuitively, you would just return here but that fails to set the path throughput
-            // and alpha correctly.  There is not a clean way to explicitly set the pixel alpha,
-            // especially in vector mode where it is not accessible at all from the presence code.
-            rayNear = scene_rdl2::math::sMaxValue * 0.5f;
-            rayFar = scene_rdl2::math::sMaxValue;
-        }
-
-        // The origin and tfar has been moved to the geometry intersection
-        // point so the new tnear is just rayEpsilon.  We also need to shorten the tfar
-        // appropriately so we don't overshoot the original ray length.
-        mcrt_common::RayDifferential presenceRay(ray, rayNear, rayFar);
-        setPriorityList(presenceRay, newPriorityList, newPriorityListCount);
-
-        // The above constructor increments the ray depth.  We want to keep the parent ray's
-        //  depth as the presence ray is a continuation of the same parent ray.  Also, if the
-        //  ray depth is incremented, lights are not visible through presence as the depth for
-        //  continued camera rays is no longer 0.
-        presenceRay.setDepth(presenceRay.getDepth() - 1);
-
-        PathVertex newPv = pv;                  // new path vertex for continued ray
-        newPv.pathDistance += ray.getEnd();
-        newPv.pathPixelWeight *= (1-presence);  // weight of continued ray
-        newPv.aovPathPixelWeight *= (1-presence); // weight of continued ray for aov use
-        newPv.pathThroughput *= (1-presence);
-        newPv.presenceDepth++;
-        newPv.totalPresence = totalPresence;
-        newPv.volumeDepth = currentVolumeDepth;
-
-        // LPE
-        // presence is a straight event
-        if (aovs) {
-            EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
-            const FrameState &fs = *pbrTls->mFs;
-            const LightAovs &lightAovs = *fs.mLightAovs;
-            // transition
-            newPv.lpeStateId = lightAovs.straightEventTransition(pbrTls, pv.lpeStateId);
-        }
-
-        // We need to weight the continued ray and the regular shading appropriately.
-        // Scaling the throughput and pixel weight for the path handles this properly.
-        // Note that we don't need to scale the bsdf lobes of the material if we do this.
-        pv.pathPixelWeight *= presence;  // weight of regular shading
-        pv.aovPathPixelWeight *= presence; // weight of regular shading for aov use
-        pv.pathThroughput *= presence;
-
-        // Fire continued ray and add in its radiance
-        VolumeTransmittance vtPresence;
-        unsigned presenceSequenceID = sequenceID;
-        bool presenceHitVolume = false;
-        computeRadianceRecurse(pbrTls, presenceRay, sp, newPv, lobe,
-            presenceRadiance, presenceTransparency, vtPresence,
-            presenceSequenceID, aovs, /* depth = */ nullptr, /* DeepParams = */ nullptr,
-            cryptomatteBuffer,
-            /* reflectedCryptoParamsPtr = */ nullptr,
-            /* refractedCryptoParamsPtr = */ nullptr,
-            /* ignoreVolumes = */ false, presenceHitVolume,
-            parentLobeLightSets);
-
+        presenceRadiance = computeRadiancePresence(pbrTls, ray, sp, prevPv, pv, lobe,
+                                                   transparency, presenceTransparency, vt, sequenceID,
+                                                   aovs, cryptomatteFlags, parentLobeLightSets,
+                                                   newPriorityList, newPriorityListCount,
+                                                   currentVolumeDepth, rayEpsilon, presence);
         radiance += presenceRadiance;
-        vt.mTransmittanceE *= vtPresence.mTransmittanceE;
-        transparency = (1 - presence) * presenceTransparency;
     }
 
-    // Set the cryptomatte information
-    float cryptoId = 0.f;
-    scene_rdl2::math::Vec2f cryptoUV = isect.getSt();
-    if (cryptomatteBuffer || reflectedCryptomatteParamsPtr || refractedCryptomatteParamsPtr) {
-        if (mDeepIDAttrIdxs.size() != 0) {
-            // Get the cryptomatte ID if we need it and it's specified
-            shading::TypedAttributeKey<float> deepIDAttrKey(mDeepIDAttrIdxs[0]);
-            if (isect.isProvided(deepIDAttrKey)) {
-                cryptoId = isect.getAttribute<float>(deepIDAttrKey);
-            }
-        }
-        shading::TypedAttributeKey<scene_rdl2::rdl2::Vec2f> cryptoUVAttrKey(mCryptoUVAttrIdx);
-        if (isect.isProvided(cryptoUVAttrKey)) {
-            cryptoUV = isect.getAttribute<scene_rdl2::rdl2::Vec2f>(cryptoUVAttrKey);
-        }
-    }
-
-    // reflected cryptomatte PART A
-    if (reflectedCryptomatteParamsPtr) {
-        // reflectedCryptomatteParamsPtr is only non-null if we are on a primary ray path
-        // that is passing through reflective materials, or is a camera ray.
-        // See the code in PathIntegrator::addIndirectOrDirectVisibleContributions() that
-        // sets this pointer if we have passed through a reflective material
-        // (reflected cryptomatte PART B)
-        if (!material->getRecordReflectedCryptomatte()) {
-            // If we have now hit a material that is NOT set to record reflected cryptomatte
-            // data, we end the reflected cryptomatte path by setting the intersection data.
-            reflectedCryptomatteParamsPtr->mHit = true;
-            reflectedCryptomatteParamsPtr->mPosition = isect.getP();
-            if (isect.isProvided(shading::StandardAttributes::sP0)) {
-                reflectedCryptomatteParamsPtr->mP0 = scene_rdl2::math::transformPoint(
-                    isect.getGeometryObject()->getSceneClass().getSceneContext()->getRender2World()->inverse(),
-                    isect.getAttribute(shading::StandardAttributes::sP0));
-            }
-            reflectedCryptomatteParamsPtr->mNormal = isect.getN();
-            shading::State sstate(&isect);
-            sstate.getRefP(reflectedCryptomatteParamsPtr->mRefP);
-            sstate.getRefN(reflectedCryptomatteParamsPtr->mRefN);
-            reflectedCryptomatteParamsPtr->mUV = cryptoUV;
-            reflectedCryptomatteParamsPtr->mId = cryptoId;
-        }
-    }
-
-    // refracted cryptomatte PART A
-    if (refractedCryptomatteParamsPtr) {
-        // refractedCryptomatteParamsPtr is only non-null if we are on a primary ray path
-        // that is passing through transmissive materials, or is a camera ray.
-        // See the code in PathIntegrator::addIndirectOrDirectVisibleContributions() that
-        // sets this pointer if we have passed through a transmissive material
-        // (refracted cryptomatte PART B)
-        if (!material->getRecordRefractedCryptomatte()) {
-            // If we have now hit a material that is NOT invisible in refracted cryptomatte,
-            //   we end the refracted cryptomatte path by setting the intersection data.
-            refractedCryptomatteParamsPtr->mHit = true;
-            refractedCryptomatteParamsPtr->mPosition = isect.getP();
-            if (isect.isProvided(shading::StandardAttributes::sP0)) {
-                refractedCryptomatteParamsPtr->mP0 = scene_rdl2::math::transformPoint(
-                    isect.getGeometryObject()->getSceneClass().getSceneContext()->getRender2World()->inverse(),
-                    isect.getAttribute(shading::StandardAttributes::sP0));
-            }
-            refractedCryptomatteParamsPtr->mNormal = isect.getN();
-            shading::State sstate(&isect);
-            sstate.getRefP(refractedCryptomatteParamsPtr->mRefP);
-            sstate.getRefN(refractedCryptomatteParamsPtr->mRefN);
-            refractedCryptomatteParamsPtr->mUV = cryptoUV;
-            refractedCryptomatteParamsPtr->mId = cryptoId;
-        }
-    }
-
+    //---------------------------------------------------------------------
+    // Run the material shader at the ray intersection point to get the Bsdf
+    scene_rdl2::alloc::Arena *arena = pbrTls->mArena;
+    SCOPED_MEM(arena);
     auto bsdf = arena->allocWithCtor<shading::Bsdf>();
     shadeMaterial(pbrTls->mTopLevelTls, material, isect, bsdf);
 
@@ -831,79 +575,65 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
         aovAccumExtraAovs(pbrTls, fs, pv, isect,  material, aovs);
     }
 
-    CHECK_CANCELLATION(pbrTls, return NONE);
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
 
     //---------------------------------------------------------------------
     // Termination (did the shader request termination of tracing?)
     if (bsdf->getEarlyTermination()) {
-        if (ray.getDepth() == 0) {
-            // We override the previous transparency value when we encounter a cutout.
-            // If there is presence, we need to combine the transparency encountered
-            // during presence continuation/traversal above with the current presence
-            // value.
-            // This is a bit confusing because the presence is for the *cutout*.
-            // e.g. if the cutout has a presence of 1, the transparency value should
-            // be forced to 1 because the cutout is 100% there and completely cuts out.
-            // If the cutout has a presence of 0, the cutout is 0% there and thus has no
-            // effect on the transparency.
-            // Also, the alpha in the render output is 1 - transparency.
-            // We also multiply by the volume's transmittanceAlpha, but that's independent
-            // of presence.
-            transparency = reduceTransparency(vt.mTransmittanceAlpha) *
-                           (presenceTransparency + (1 - presenceTransparency) * presence);
-        } else {
-            transparency = reduceTransparency(earlyTerminatorPathThroughput);
-        }
+        // We override the previous transparency value when we encounter a cutout.
+        // If there is presence, we need to combine the transparency encountered
+        // during presence continuation/traversal above with the current presence
+        // value.
+        // This is a bit confusing because the presence is for the *cutout*.
+        // e.g. if the cutout has a presence of 1, the transparency value should
+        // be forced to 1 because the cutout is 100% there and completely cuts out.
+        // If the cutout has a presence of 0, the cutout is 0% there and thus has no
+        // effect on the transparency.
+        // Also, the alpha in the render output is 1 - transparency.
+        // We also multiply by the volume's transmittanceAlpha, but that's independent
+        // of presence.
+        transparency = reduceTransparency(vt.mTransmittanceAlpha) *
+                        scene_rdl2::math::lerp(presence, 1.0f, presenceTransparency);
 
-        // fill out the material aovs
+        // fill out the aovs
         if (aovs) {
-            aovSetMaterialAovs(pbrTls, aovSchema, *fs.mLightAovs, *fs.mMaterialAovs,
+            aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
                                isect, ray, *scene, *bsdf, ssAov,
                                nullptr, nullptr, earlyTerminatorPathPixelWeight, pv.lpeStateId, aovs);
-        }
-        if (aovs && ray.getDepth() == 0) {
             aovSetStateVars(pbrTls, aovSchema, isect, volumeSurfaceT, ray, *scene, earlyTerminatorPathPixelWeight,
                             aovs, tHit);
             aovSetPrimAttrs(pbrTls, aovSchema, material->get<shading::Material>().getAovFlags(),
                             isect, earlyTerminatorPathPixelWeight, aovs);
         }
 
-        if (depth && ray.getDepth() == 0) {
+        if (depth) {
             *depth = scene->getCamera()->computeZDistance(isect.getP(), tHit, ray.getTime());
         }
 
         if (deepParams) {
             // If we have terminated, don't output anything to the deep buffer
-            deepParams->mHitDeep = false;
+            deepParams->mHitGeom = false;
         }
 
-        if (reflectedCryptomatteParamsPtr) {
-            // If we have terminated, don't output anything to the reflected cryptomatte buffer
-            reflectedCryptomatteParamsPtr->mHit = false;
-        }
-
-        if (refractedCryptomatteParamsPtr) {
-            // If we have terminated, don't output anything to the refracted cryptomatte buffer
-            refractedCryptomatteParamsPtr->mHit = false;
-        }
-
-        return indirectRadianceType;
+        return radiance;
     }
 
+    //---------------------------------------------------------------------
     if (scene_rdl2::math::isEqual(presence, 0.f)) {
         // Only the presence continuation ray contributes to the radiance so we can early out here.
         // We must process cutouts (early termination) before this or the cutout alpha will be incorrect.
-        return indirectRadianceType;
+        return radiance;
     }
 
-    // if this is a primary ray, fill out the intersection and primitive attribute aovs
-    if (aovs && ray.getDepth() == 0) {
+    //---------------------------------------------------------------------
+    // this is a primary ray, so fill out the intersection and primitive attribute aovs
+    if (aovs) {
         aovSetStateVars(pbrTls, aovSchema, isect, volumeSurfaceT, ray, *scene, pv.pathPixelWeight, aovs, tHit);
         aovSetPrimAttrs(pbrTls, aovSchema, material->get<shading::Material>().getAovFlags(),
                          isect, pv.pathPixelWeight, aovs);
     }
 
-    if (depth && ray.getDepth() == 0) {
+    if (depth) {
         *depth = scene->getCamera()->computeZDistance(isect.getP(), tHit, ray.getTime());
     }
 
@@ -915,58 +645,45 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
     if (aovs) {
         if (!isBlack(selfEmission)) {
             EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
-            const LightAovs &lightAovs = *fs.mLightAovs;
 
             // transition
             int lpeStateId = pv.lpeStateId;
             lpeStateId = lightAovs.emissionEventTransition(pbrTls, lpeStateId, *bsdf);
 
             // accumulate matching aovs
-            aovAccumLightAovs(pbrTls, *fs.mAovSchema, *fs.mLightAovs, selfEmission, 
+            aovAccumLightAovs(pbrTls, aovSchema, lightAovs, selfEmission, 
                               nullptr, AovSchema::sLpePrefixNone, lpeStateId, aovs);
         }
     }
 
     //---------------------------------------------------------------------
-    // Early out if we don't have any Bsdf lobes nor Bssrdf, VolumeSubsurface
+    // Early out if we have neither bsdf lobes nor subsurface scattering
     if (bsdf->getLobeCount() == 0 && !bsdf->hasSubsurface()) {
-
         if (aovs) {
-            aovSetMaterialAovs(pbrTls, aovSchema, *fs.mLightAovs, *fs.mMaterialAovs,
+            aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
                                isect, ray, *scene, *bsdf, ssAov,
                                nullptr, nullptr, pv.aovPathPixelWeight, pv.lpeStateId, aovs);
         }
-
-        return indirectRadianceType;
+        return radiance;
     }
 
     // Starting the integrator accumulator here is roughly equivalent of what
     // the bundled code does.
 
     //---------------------------------------------------------------------
-    // Have we reached the maximum number of bounces for each lobe types / overall
-    // Note: hair lobes are also glossy lobes. So the max depth for hair lobes
-    // would be max(mMaxGlossyDepth, mMaxHairDepth)
-    shading::BsdfLobe::Type indirectFlags = shading::BsdfLobe::NONE;
-    bool doIndirect = mBsdfSamples > 0            &&
-                      ray.getDepth() < mMaxDepth  &&
-                      !wasFromAVolume;
-    if (doIndirect) {
-        setFlag(indirectFlags, (pv.diffuseDepth < mMaxDiffuseDepth  ?
-                shading::BsdfLobe::DIFFUSE  :  shading::BsdfLobe::NONE));
-        setFlag(indirectFlags, (pv.glossyDepth < mMaxGlossyDepth    ?
-                shading::BsdfLobe::GLOSSY   :  shading::BsdfLobe::NONE));
-        setFlag(indirectFlags, (pv.mirrorDepth < mMaxMirrorDepth    ?
-                shading::BsdfLobe::MIRROR   :  shading::BsdfLobe::NONE));
-        doIndirect = (indirectFlags != shading::BsdfLobe::NONE) ||
-                     (pv.hairDepth < mMaxHairDepth);
-        // If doIndirect is true due to hairDepth only, then only side type bits
-        // are set in indirectFlags.
-        setFlag(indirectFlags, (doIndirect  ?
-                shading::BsdfLobe::ALL_SURFACE_SIDES  :  shading::BsdfLobe::NONE));
+    // Set flags to control which indirect bounce types we'll recurse into, as
+    // determined by comparing the various depths to their max allowed values.
+    // Note: hair lobes are also glossy lobes. So their max depth is max(mMaxGlossyDepth, mMaxHairDepth).
+    shading::BsdfLobe::Type indirectFlags = shading::BsdfLobe::Type::NONE;
+    if ((mBsdfSamples > 0) && (mMaxDepth > 0)) {
+        if (pv.diffuseDepth < mMaxDiffuseDepth) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_DIFFUSE);
+        if (pv.glossyDepth  < mMaxGlossyDepth ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_GLOSSY);
+        if (pv.mirrorDepth  < mMaxMirrorDepth ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_MIRROR);
+        if (pv.hairDepth    < mMaxHairDepth   ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_SURFACE_SIDES);
     }
+    bool doIndirect = (indirectFlags != shading::BsdfLobe::Type::NONE);
 
-    CHECK_CANCELLATION(pbrTls, return NONE);
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
 
     //---------------------------------------------------------------------
     // For bssrdf/VolumeSubsurface or bsdfs which contain both
@@ -980,12 +697,13 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
         normalPtr = &normal;
     }
 
+    //---------------------------------------------------------------------
     // Gather up all lights which can affect the intersection point/normal.
     LightSet activeLightSet;
-    bool hasRayTerminatorLights;
     computeActiveLights(arena, scene, isect, normalPtr, *bsdf, &pv, ray.getTime(),
-        activeLightSet, hasRayTerminatorLights, parentLobeLightSets);
+        activeLightSet, parentLobeLightSets);
 
+    //---------------------------------------------------------------------
     // Setup a slice, which handles selecting the lobe types and setup
     // evaluations to include the cosine term.
     // Note: Even though we may not be doing indirect for certain lobe types
@@ -996,110 +714,403 @@ PathIntegrator::computeRadianceRecurse(pbr::TLState *pbrTls, mcrt_common::RayDif
 
     //---------------------------------------------------------------------
     // Estimate subsurface scattering
-    // Option 1: diffusion profile (bssrdf) approach
-
-    if (bsdf->getBssrdfCount() > 0) {
-        // increment subsurface depth
-        pv.subsurfaceDepth += 1;
-    }
-
-    for (int bssrdfIdx = 0; bssrdfIdx < bsdf->getBssrdfCount(); ++bssrdfIdx) {
-        const shading::Bssrdf *bssrdf = bsdf->getBssrdf(bssrdfIdx);
-        // Stop the accumulator here since the subsurface accumulator will be
-        // started up inside of computeRadianceSubsurface as needed.
-        radiance += computeRadianceDiffusionSubsurface(pbrTls, *bsdf, sp, pv, ray,
-            isect, slice, *bssrdf, activeLightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
-            sequenceID, ssAov, aovs, parentLobeLightSets);
-    }
-
-    // Option 2: path trace volumetric approach
-    const shading::VolumeSubsurface *volumeSubsurface = bsdf->getVolumeSubsurface();
-    if (volumeSubsurface != nullptr) {
-        // increment subsurface depth
-        pv.subsurfaceDepth += 1;
-        radiance += computeRadiancePathTraceSubsurface(pbrTls, *bsdf, sp, pv, ray,
-            isect, *volumeSubsurface, activeLightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
-            sequenceID, ssAov, aovs);
-    }
-
-    checkForNan(radiance, "Subsurface scattering", sp, pv, ray, isect);
-
-
-    //---------------------------------------------------------------------
-    // Early out if we don't have any Bsdf lobes
-    if (bsdf->getLobeCount() == 0) {
-
-        if (aovs) {
-            aovSetMaterialAovs(pbrTls, aovSchema, *fs.mLightAovs, *fs.mMaterialAovs,
-                               isect, ray, *scene, *bsdf, ssAov,
-                               nullptr, nullptr, pv.aovPathPixelWeight, pv.lpeStateId, aovs);
+    if (bsdf->hasSubsurface()) {
+        radiance += computeRadianceSubsurface(pbrTls, *bsdf, sp, pv, ray, isect, slice,
+                                              activeLightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
+                                              sequenceID, ssAov, aovs, parentLobeLightSets);
+        // Early out if no bsdf lobes.
+        // No need to check for zero lobe count in the non-subsurface case - an early-out already handled that.
+        if (bsdf->getLobeCount() == 0) {
+            if (aovs) {
+                aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
+                                   isect, ray, *scene, *bsdf, ssAov,
+                                   nullptr, nullptr, pv.aovPathPixelWeight, pv.lpeStateId, aovs);
+            }
+            return radiance;
         }
-
-        return indirectRadianceType;
     }
 
-    CHECK_CANCELLATION(pbrTls, return NONE );
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
 
     //---------------------------------------------------------------------
     // Estimate emissive volume region energy contribution
     radiance += computeRadianceEmissiveRegionsScalar(pbrTls, sp, pv, ray, isect,
         *bsdf, slice, rayEpsilon, sequenceID, aovs);
 
-    // At this point we have all the information about the current hard surface bounce, so we add a node for it
-    // to capture the data we'll need for deferred rendering. Note that immediately below there's a call to
-    // computeRadianceBsdfMultiSampler(), which recursively adds the nodes for any subtrees.
-    // Vector and xpu modes don't make use of the nodes, but they can call here under some circumstances, so we
-    // supress node addition for all but scalar mode.
-    if (fs.mExecutionMode == mcrt_common::ExecutionMode::SCALAR) {
-        addNode(pbrTls, sp, pv, isect, *bsdf, slice, lobe, sequenceID, rayEpsilon, ray.getDirFootprint());
-    }
-
     //---------------------------------------------------------------------
-    // Setup bsdf and light samples
+    // Do bsdf sampling and light sampling
     radiance += computeRadianceBsdfMultiSampler(pbrTls, sp, pv, ray, isect, *bsdf, slice,
         doIndirect, indirectFlags, newPriorityList, newPriorityListCount, activeLightSet, normalPtr,
-        rayEpsilon, shadowRayEpsilon, ssAov, sequenceID, aovs, reflectedCryptomatteParamsPtr, refractedCryptomatteParamsPtr,
+        rayEpsilon, shadowRayEpsilon, ssAov, sequenceID, aovs, cryptomatteFlags,
         parentLobeLightSets);
 
     // -------------------------------------------------------------------
-    if (cryptomatteBuffer) {
-        scene_rdl2::math::Vec3f P0(0.0f);
-        if (isect.isProvided(shading::StandardAttributes::sP0)) {
-            P0 = scene_rdl2::math::transformPoint(
-                isect.getGeometryObject()->getSceneClass().getSceneContext()->getRender2World()->inverse(),
-                isect.getAttribute(shading::StandardAttributes::sP0));
+    // Cryptomatte handling
+    bool storeRegular   = ((cryptomatteFlags & CRYPTOMATTE_FLAG_REGULAR  ) != 0);
+    bool storeReflected = ((cryptomatteFlags & CRYPTOMATTE_FLAG_REFLECTED) != 0) && !material->getRecordReflectedCryptomatte();
+    bool storeRefracted = ((cryptomatteFlags & CRYPTOMATTE_FLAG_REFRACTED) != 0) && !material->getRecordRefractedCryptomatte();
+    if (storeRegular || storeReflected || storeRefracted) {
+        CryptomatteResults cryptomatteResults;
+        computeCryptomatteResults(cryptomatteResults, mCryptoIdAttrIdx, mCryptoUVAttrIdx, isect);
+
+        // Regular cryptomatte
+        if (storeRegular) {
+            unsigned px, py;
+            uint32ToPixelLocation(sp.mPixel, &px, &py);
+
+            // We divide by pathPixelWeight to compute Cryptomatte beauty. This can cause fireflies if
+            // the value is small, so we clamp at 0.01.
+            float reciprocalWeight = 1.0f / scene_rdl2::math::max(pv.pathPixelWeight, 0.01f);
+            scene_rdl2::math::Color beauty = (radiance - presenceRadiance) * reciprocalWeight;
+
+            ((CryptomatteBuffer *)sp.mCryptomatteBuffer)->addSampleScalar(px, py, pv.pathPixelWeight,
+                                                                          cryptomatteResults,
+                                                                          beauty,
+                                                                          pv.presenceDepth,
+                                                                          moonray::pbr::CRYPTOMATTE_TYPE_REGULAR);
         }
 
-        scene_rdl2::math::Vec3f refP(0.0f), refN(0.0f);
-        shading::State sstate(&isect);
-        sstate.getRefP(refP);
-        sstate.getRefN(refN);
-
-        unsigned px, py;
-        uint32ToPixelLocation(sp.mPixel, &px, &py);
-
-        // We divide by pathPixelWeight to compute Cryptomatte beauty. This can cause fireflies if
-        // the value is small, so we clamp at 0.01.
-        float reciprocalWeight = 1.0f / scene_rdl2::math::max(pv.pathPixelWeight, 0.01f);
-        scene_rdl2::math::Color beauty = (radiance - presenceRadiance) * reciprocalWeight;
-
-        cryptomatteBuffer->addSampleScalar(px, py, cryptoId,
-                                           pv.pathPixelWeight,
-                                           isect.getP(),
-                                           P0,
-                                           isect.getN(),
-                                           scene_rdl2::math::Color4(beauty),
-                                           refP,
-                                           refN,
-                                           cryptoUV,
-                                           pv.presenceDepth,
-                                           moonray::pbr::CRYPTOMATTE_TYPE_REGULAR);
+        // Ref{le|ra}cted cryptomatte PART A (see PART B in PathIntegratorMultiSampler.cc for details)
+        if (storeReflected) {
+            ((CryptomatteResults *)sp.mCryptomatteResultsArray)[CRYPTOMATTE_TYPE_REFLECTED] = cryptomatteResults;
+        }
+        if (storeRefracted) {
+            ((CryptomatteResults *)sp.mCryptomatteResultsArray)[CRYPTOMATTE_TYPE_REFRACTED] = cryptomatteResults;
+        }
     }
 
     float minTransparency = reduceTransparency(vt.mTransmittanceMin);
-    transparency = transparency + (1 - transparency) * minTransparency;
+    transparency = scene_rdl2::math::lerp(minTransparency, 1.0f, transparency);
 
-    return indirectRadianceType;
+    return radiance;
+}
+
+
+scene_rdl2::math::Color
+PathIntegrator::computeRadianceRecurse1(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+        Subpixel &sp, const PathVertex &prevPv, const shading::BsdfLobe *lobe,
+        float &transparency, VolumeTransmittance& vt,
+        unsigned &sequenceID, float *aovs,
+        uint32_t cryptomatteFlags,
+        const Rdl2LightSetList& parentLobeLightSets) const
+{
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
+
+    // Turn off profiling integrator profiling for the first part of this
+    // function. It's turned back on later.
+    MNRY_ASSERT(pbrTls->isIntegratorAccumulatorRunning());
+
+    const FrameState &fs = *pbrTls->mFs;
+    const Scene *scene = MNRY_VERIFY(pbrTls->mFs->mScene);
+    Statistics &stats = pbrTls->mStatistics;
+    const AovSchema &aovSchema = *fs.mAovSchema;
+    const LightAovs &lightAovs = *fs.mLightAovs;
+    const MaterialAovs &materialAovs = *fs.mMaterialAovs;
+    scene_rdl2::math::Color radiance = scene_rdl2::math::sBlack;
+    transparency = 0.0f;
+    vt.reset();
+    scene_rdl2::math::Color ssAov = scene_rdl2::math::sBlack;
+    int lobeType = (lobe == nullptr) ? 0 : lobe->getType();
+
+    //---------------------------------------------------------------------
+    // Trace continuation ray
+    shading::Intersection isect;
+    bool hitGeom = scene->intersectRay(pbrTls->mTopLevelTls, ray, isect, lobeType);
+
+    //---------------------------------------------------------------------
+    // Record ray for the path visualizer
+    if (fs.mSimulationMode && hitGeom) {
+        fs.mScene->recordIndirectRay(ray, sp.mPixel, lobeType);
+    }
+
+    //--------------------------------------------------------------------
+    // Set up next vertex on path.
+    PathVertex pv(prevPv);
+
+    //--------------------------------------------------------------------
+    // Volumes
+    // computeRadianceVolume() increases the pv.volumeDepth.  We want the presence
+    // continuation ray's volume depth to be unchanged, so we restore it.
+    // Not doing this can cause problems with presence objects inside volumes
+    // if the max volume depth is low (default = 1).  They will appear to 'hold out'
+    // the volume behind them as the max volume depth is reached.
+    int currentVolumeDepth = pv.volumeDepth;
+
+    // only recurse into volumes if we came from a lobe (i.e. not from a volume)
+    if (lobe) {
+        float volumeSurfaceT = scene_rdl2::math::sMaxValue;
+        computeRadianceVolume(pbrTls, ray, sp, pv, lobeType, radiance, sequenceID, vt,
+                              aovs, nullptr, nullptr, &volumeSurfaceT);
+        pv.pathThroughput *= vt.transmittance();
+    }
+
+    //--------------------------------------------------------------------
+    // Early return if no geometry hit
+    if (!hitGeom) {
+        if (aovs) {
+            aovAccumBackgroundExtraAovs(pbrTls, fs, pv, aovs);
+        }
+        transparency = reduceTransparency(vt.mTransmittanceAlpha);
+        return radiance;
+    }
+
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
+
+    //--------------------------------------------------------------------
+    // Early return with error color if isect doesn't provide all the required attributes the shader requested
+    if (!isect.hasAllRequiredAttributes()) {
+        radiance += pv.pathThroughput * fs.mFatalColor;
+        return radiance;
+    }
+
+    //--------------------------------------------------------------------
+    // Finalize Intersection setup.
+    geom::initIntersectionPhase2(isect,
+                                 pbrTls->mTopLevelTls,
+                                 pv.mirrorDepth,
+                                 pv.glossyDepth,
+                                 pv.diffuseDepth,
+                                 isSubsurfaceAllowed(pv.subsurfaceDepth),
+                                 pv.minRoughness,
+                                 -ray.getDirection());
+
+    //---------------------------------------------------------------------
+    // Transfer the ray to its intersection before we run shaders. This is
+    // needed for texture filtering based on ray differentials.
+    // Also scale the final differentials by a user factor. This is left until
+    // the very end and not baked into the ray differentials since the factor
+    // will typically be > 1, and would cause the ray differentials to be larger
+    // than necessary. The mip selector is computed in this call also.
+    isect.transferAndComputeDerivatives(pbrTls->mTopLevelTls, &ray,
+            sp.mTextureDiffScale);
+
+    float rayEpsilon = isect.getEpsilonHint();
+    if (rayEpsilon <= 0.0f) {
+        // Compute automatic ray-tracing bias
+        float pathDistance = pv.pathDistance + ray.getEnd();
+        rayEpsilon = sHitEpsilonStart * scene_rdl2::math::max(pathDistance, 1.0f);
+    }
+    float shadowRayEpsilon = isect.getShadowEpsilonHint();
+
+    const scene_rdl2::rdl2::Material* material = isect.getMaterial()->asA<scene_rdl2::rdl2::Material>();
+    MNRY_ASSERT(material != NULL);
+
+    // perform material substitution if needed
+    scene_rdl2::rdl2::RaySwitchContext switchCtx;
+    switchCtx.mRayType = lobeTypeToRayType(pv.lobeType);
+    material = material->raySwitch(switchCtx);
+
+    shading::TLState* shadingTls = pbrTls->mTopLevelTls->mShadingTls.get();
+
+    //---------------------------------------------------------------------
+    // Get material's presence and potentially convert it stochastically to 0 or 1
+    float presence = shading::presence(material, shadingTls, shading::State(&isect));
+    if (presence != 1.0f && presence != 0.0f && luminance(pv.pathThroughput) < (1.0f - mPresenceQuality)) {
+        presence = stochasticPresence(sp, pv, sequenceID, presence);
+    }
+
+    // Some NPR materials that want to allow for completely arbitrary shading normals
+    // can request that the integrator does not perform any light culling based on the
+    // normal. In those cases, we also want to prevent our call to adaptNormal() in the
+    // Intersection when the material evaluates its normal map bindings.
+    if (shading::preventLightCulling(material, shading::State(&isect))) {
+       isect.setUseAdaptNormal(false);
+    }
+
+    // Nested dielectric handling.  Uses presence code for skipping false intersections.
+    // See "Simple Nested Dielectrics in Ray Traced Images". 
+    // This also enables automatic removal of self-overlapping geometry that's assigned to the
+    // same material.
+    int materialPriority = material->priority();
+    const scene_rdl2::rdl2::Camera* camera = scene->getCamera()->getRdlCamera();
+
+    const scene_rdl2::rdl2::Material* newPriorityList[4];
+    int newPriorityListCount[4]; 
+    float mediumIor = updateMaterialPriorities(ray, scene, camera, shadingTls, isect, material, &presence,
+                                               materialPriority, newPriorityList, newPriorityListCount, 
+                                               pv.presenceDepth);
+    isect.setMediumIor(mediumIor);
+
+    // If we terminate early, we do not want the contribution of the presence
+    // value in the pathThroughput or the pathPixelWeight.
+    scene_rdl2::math::Color earlyTerminatorPathThroughput = pv.pathThroughput;
+    float earlyTerminatorPathPixelWeight = pv.pathPixelWeight;
+
+    // Presence handling: This will continue the current ray through the partially present geometry.
+    if (presence < 1.f - scene_rdl2::math::sEpsilon) {
+        float presenceTransparency;
+        radiance += computeRadiancePresence(pbrTls, ray, sp, prevPv, pv, lobe,
+                                            transparency, presenceTransparency, vt, sequenceID,
+                                            aovs, cryptomatteFlags, parentLobeLightSets,
+                                            newPriorityList, newPriorityListCount,
+                                            currentVolumeDepth, rayEpsilon, presence);
+    }
+
+    //---------------------------------------------------------------------
+    // Run the material shader at the ray intersection point to get the Bsdf
+    scene_rdl2::alloc::Arena *arena = pbrTls->mArena;
+    SCOPED_MEM(arena);
+    auto bsdf = arena->allocWithCtor<shading::Bsdf>();
+    shadeMaterial(pbrTls->mTopLevelTls, material, isect, bsdf);
+
+    if (fs.mPrintBsdf) {
+        bsdf->show(material->getSceneClass().getName(), material->getName(), std::cout);
+    }
+    stats.incCounter(STATS_SHADER_EVALS);
+
+    // Evaluate any extra aovs on this material
+    if (aovs) {
+        aovAccumExtraAovs(pbrTls, fs, pv, isect,  material, aovs);
+    }
+
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
+
+    //---------------------------------------------------------------------
+    // Early out if the shader requested termination of tracing
+    if (bsdf->getEarlyTermination()) {
+        if (aovs) {
+            aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
+                               isect, ray, *scene, *bsdf, ssAov,
+                               nullptr, nullptr, earlyTerminatorPathPixelWeight, pv.lpeStateId, aovs);
+        }
+        transparency = reduceTransparency(earlyTerminatorPathThroughput);
+        return radiance;
+    }
+
+    //---------------------------------------------------------------------
+    // Cryptomatte handling
+    bool storeReflected = ((cryptomatteFlags & CRYPTOMATTE_FLAG_REFLECTED) != 0) && !material->getRecordReflectedCryptomatte();
+    bool storeRefracted = ((cryptomatteFlags & CRYPTOMATTE_FLAG_REFRACTED) != 0) && !material->getRecordRefractedCryptomatte();
+    if (storeReflected || storeRefracted) {
+        CryptomatteResults cryptomatteResults;
+        computeCryptomatteResults(cryptomatteResults, mCryptoIdAttrIdx, mCryptoUVAttrIdx, isect);
+
+        // Ref{le|ra}cted cryptomatte PART A (see PART B in PathIntegratorMultiSampler.cc for details)
+        if (storeReflected) {
+            ((CryptomatteResults *)sp.mCryptomatteResultsArray)[CRYPTOMATTE_TYPE_REFLECTED] = cryptomatteResults;
+        }
+        if (storeRefracted) {
+            ((CryptomatteResults *)sp.mCryptomatteResultsArray)[CRYPTOMATTE_TYPE_REFRACTED] = cryptomatteResults;
+        }
+    }
+
+    //---------------------------------------------------------------------
+    if (scene_rdl2::math::isEqual(presence, 0.f)) {
+        // Only the presence continuation ray contributes to the radiance so we can early out here.
+        // We must process cutouts (early termination) before this or the cutout alpha will be incorrect.
+        return radiance;
+    }
+
+    //---------------------------------------------------------------------
+    // Self-emission
+    scene_rdl2::math::Color selfEmission = pv.pathThroughput * bsdf->getSelfEmission();
+    radiance += selfEmission;
+    // LPE
+    if (aovs && !isBlack(selfEmission)) {
+        EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
+
+        // transition
+        int lpeStateId = pv.lpeStateId;
+        lpeStateId = lightAovs.emissionEventTransition(pbrTls, lpeStateId, *bsdf);
+
+        // accumulate matching aovs
+        aovAccumLightAovs(pbrTls, aovSchema, lightAovs, selfEmission, 
+                          nullptr, AovSchema::sLpePrefixNone, lpeStateId, aovs);
+    }
+
+    //---------------------------------------------------------------------
+    // Early out if we have neither bsdf lobes nor subsurface scattering
+    if (bsdf->getLobeCount() == 0 && !bsdf->hasSubsurface()) {
+        if (aovs) {
+            aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
+                               isect, ray, *scene, *bsdf, ssAov,
+                               nullptr, nullptr, pv.aovPathPixelWeight, pv.lpeStateId, aovs);
+        }
+        return radiance;
+    }
+
+    // Starting the integrator accumulator here is roughly equivalent of what
+    // the bundled code does.
+
+    //---------------------------------------------------------------------
+    // Set flags to control which indirect bounce types we'll recurse into, as
+    // determined by comparing the various depths to their max allowed values.
+    // Note: hair lobes are also glossy lobes. So their max depth is max(mMaxGlossyDepth, mMaxHairDepth).
+    // Also note we check there's a lobe, to limit indirect lighting on volumes to a single bounce
+    shading::BsdfLobe::Type indirectFlags = shading::BsdfLobe::Type::NONE;
+    if ((mBsdfSamples > 0) && (ray.getDepth() < mMaxDepth) && lobe) {
+        if (pv.diffuseDepth < mMaxDiffuseDepth) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_DIFFUSE);
+        if (pv.glossyDepth  < mMaxGlossyDepth ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_GLOSSY);
+        if (pv.mirrorDepth  < mMaxMirrorDepth ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_MIRROR);
+        if (pv.hairDepth    < mMaxHairDepth   ) setFlag(indirectFlags, shading::BsdfLobe::Type::ALL_SURFACE_SIDES);
+    }
+    bool doIndirect = (indirectFlags != shading::BsdfLobe::Type::NONE);
+
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
+
+    //---------------------------------------------------------------------
+    // For bssrdf/VolumeSubsurface or bsdfs which contain both
+    // reflection and transmission lobes or is spherical,
+    // a single normal can't be used for culling so skip normal culling.
+    scene_rdl2::math::Vec3f normal(scene_rdl2::math::zero);
+    scene_rdl2::math::Vec3f *normalPtr = nullptr;
+    if (!bsdf->hasSubsurface() && !bsdf->getIsSpherical() &&
+        ((bsdf->getType() & shading::BsdfLobe::ALL_SURFACE_SIDES) != shading::BsdfLobe::ALL_SURFACE_SIDES)) {
+        normal = (bsdf->getType() & shading::BsdfLobe::REFLECTION) ? isect.getNg() : -isect.getNg();
+        normalPtr = &normal;
+    }
+
+    //---------------------------------------------------------------------
+    // Gather up all lights which can affect the intersection point/normal.
+    LightSet activeLightSet;
+    computeActiveLights(arena, scene, isect, normalPtr, *bsdf, &pv, ray.getTime(),
+        activeLightSet, parentLobeLightSets);
+
+    //---------------------------------------------------------------------
+    // Setup a slice, which handles selecting the lobe types and setup
+    // evaluations to include the cosine term.
+    // Note: Even though we may not be doing indirect for certain lobe types
+    // (according to indirectFlags), we still want to draw samples according
+    // to all lobes for direct lighting MIS.
+    shading::BsdfSlice slice(isect.getNg(), -ray.getDirection(), true,
+                    isect.isEntering(), fs.mShadowTerminatorFix, shading::BsdfLobe::ALL);
+
+    //---------------------------------------------------------------------
+    // Estimate subsurface scattering
+    if (bsdf->hasSubsurface()) {
+        radiance += computeRadianceSubsurface(pbrTls, *bsdf, sp, pv, ray, isect, slice,
+                                              activeLightSet, doIndirect, rayEpsilon, shadowRayEpsilon,
+                                              sequenceID, ssAov, aovs, parentLobeLightSets);
+        // Early out if no bsdf lobes.
+        // No need to check for zero lobe count in the non-subsurface case - an early-out already handled that.
+        if (bsdf->getLobeCount() == 0) {
+            if (aovs) {
+                aovSetMaterialAovs(pbrTls, aovSchema, lightAovs, materialAovs,
+                                   isect, ray, *scene, *bsdf, ssAov,
+                                   nullptr, nullptr, pv.aovPathPixelWeight, pv.lpeStateId, aovs);
+            }
+            return radiance;
+        }
+    }
+
+    CHECK_CANCELLATION(pbrTls, return scene_rdl2::math::sBlack);
+
+    //---------------------------------------------------------------------
+    // Estimate emissive volume region energy contribution
+    radiance += computeRadianceEmissiveRegionsScalar(pbrTls, sp, pv, ray, isect,
+        *bsdf, slice, rayEpsilon, sequenceID, aovs);
+
+    //---------------------------------------------------------------------
+    // Do bsdf sampling and light sampling
+    radiance += computeRadianceBsdfMultiSampler(pbrTls, sp, pv, ray, isect, *bsdf, slice,
+        doIndirect, indirectFlags, newPriorityList, newPriorityListCount, activeLightSet, normalPtr,
+        rayEpsilon, shadowRayEpsilon, ssAov, sequenceID, aovs, cryptomatteFlags,
+        parentLobeLightSets);
+
+    float minTransparency = reduceTransparency(vt.mTransmittanceMin);
+    transparency = scene_rdl2::math::lerp(minTransparency, 1.0f, transparency);
+
+    return radiance;
 }
 
 
@@ -1134,9 +1145,6 @@ PathIntegrator::initPrimaryRay(pbr::TLState *pbrTls,
     sp.mSubpixelX = sample.pixelX;
     sp.mSubpixelY = sample.pixelY;
     sp.mPixelSamples = pixelSamples;
-    sp.mDeferredNodesHead = nullptr;
-    sp.mDeferredNodesTailPtr = &sp.mDeferredNodesHead;
-    sp.mNumDeferredNodes = 0;
 
     // Make sure our clamping is look-invariant with changes in bsdf sample counts
     sp.mSampleClampingValue = mSampleClampingValue / mBsdfSamples;
@@ -1279,6 +1287,9 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
 
     const FrameState &fs = *pbrTls->mFs;
 
+    const AovSchema &aovSchema = *fs.mAovSchema;
+    const LightAovs &lightAovs = *fs.mLightAovs;
+
     // Create primary ray.
     const Scene *scene = MNRY_VERIFY(fs.mScene);
     const bool validRay = initPrimaryRay(pbrTls, scene->getCamera(), pixelX, pixelY, subpixelIndex,
@@ -1292,8 +1303,6 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
     // LPE
     if (aovs) {
         EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
-
-        const LightAovs &lightAovs = *fs.mLightAovs;
 
         // transition
         pv.lpeStateId = lightAovs.cameraEventTransition(pbrTls);
@@ -1316,15 +1325,19 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
     // the volume attenuation along this ray to the first hit (or infinity)
     VolumeTransmittance vt;
 
+    sp.mCryptomatteBuffer = (void *)cryptomatteBuffer;
+    CryptomatteResults cryptomatteResultsArray[NUM_CRYPTOMATTE_TYPES];
+    sp.mCryptomatteResultsArray = (void *)cryptomatteResultsArray;
+
     // We maintain an independent set of cryptomatte data for reflections
-    CryptomatteParams reflectedCryptomatteParams;
-    reflectedCryptomatteParams.init(cryptomatteBuffer);
-    CryptomatteParams *reflectedCryptomatteParamsPtr = cryptomatteBuffer ? &reflectedCryptomatteParams : nullptr;
+    CryptomatteResults &reflectedCryptomatteResults = cryptomatteResultsArray[CRYPTOMATTE_TYPE_REFLECTED];
+    reflectedCryptomatteResults.init();
 
     // We maintain another independent set of cryptomatte data for refractions/transmission
-    CryptomatteParams refractedCryptomatteParams;
-    refractedCryptomatteParams.init(cryptomatteBuffer);
-    CryptomatteParams *refractedCryptomatteParamsPtr = cryptomatteBuffer ? &refractedCryptomatteParams : nullptr;
+    CryptomatteResults &refractedCryptomatteResults = cryptomatteResultsArray[CRYPTOMATTE_TYPE_REFRACTED];
+    refractedCryptomatteResults.init();
+
+    uint32_t cryptomatteFlags = cryptomatteBuffer ? CRYPTOMATTE_FLAGS_ALL : 0;
 
     if (deepBuffer) {
 
@@ -1337,7 +1350,8 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
         deepParams.mSampleX = sample.pixelX;
         deepParams.mSampleY = sample.pixelY;
         deepParams.mPixelSamples = pixelSamples;
-        deepParams.mHitDeep = false;
+        deepParams.mHitGeom = false;
+        deepParams.mHitVolume = false;
         deepParams.mVolumeAovs = deepVolumeAovs;
 
         // This is the only place we pass a non-null deepParams as we only want to
@@ -1345,14 +1359,12 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
 
         // First render normally, capturing the deep volume segments (if any) and
         // the flat radiance + aovs.  Check if we hit any volumes with the primary ray.
-        bool hitVolume = false;
-        scene_rdl2::math::Color deepRadiance;
         float deepTransparency;
-        computeRadianceRecurse(pbrTls, ray, sp, pv, /* lobe = */ nullptr, deepRadiance,
-                               deepTransparency, vt, sequenceID, aovs, depth,
-                               &deepParams, cryptomatteBuffer,
-                               reflectedCryptomatteParamsPtr, refractedCryptomatteParamsPtr,
-                               /* ignoreVolumes = */ false, hitVolume, Rdl2LightSetList());
+        scene_rdl2::math::Color deepRadiance = computeRadianceRecurse0(pbrTls, ray, sp, pv, /* lobe = */ nullptr,
+                                                                       deepTransparency, vt,
+                                                                       sequenceID, aovs, depth,
+                                                                       &deepParams, cryptomatteFlags,
+                                                                       Rdl2LightSetList());
 
         float deepAlpha = 1.f - deepTransparency;
 
@@ -1360,7 +1372,7 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
         alpha = deepAlpha;
         pathPixelWeight = pv.pathPixelWeight;
 
-        if (hitVolume) {
+        if (deepParams.mHitVolume) {
             // We hit a volume.  Render again with the volume disabled to get the
             // correct hard surface radiance without volume attenuation applied.
             // Note that we can't alter the radiance or aovs computed above.  We need
@@ -1371,29 +1383,29 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
             initPrimaryRay(pbrTls, scene->getCamera(), pixelX, pixelY, subpixelIndex,
                            pixelSamples, sample, hsRay, hsSp, hsPv);
 
+            // Copy the cryptomatte addresses for cases where both deep and cryptomatte are used
+            hsSp.mCryptomatteBuffer = sp.mCryptomatteBuffer;
+            hsSp.mCryptomatteResultsArray = sp.mCryptomatteResultsArray;
+
             // LPE
             if (aovs) {
                 EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
-
-                const LightAovs &lightAovs = *fs.mLightAovs;
 
                 // transition
                 hsPv.lpeStateId = lightAovs.cameraEventTransition(pbrTls);
             }
 
-            scene_rdl2::math::Color hsRadiance;
             float hsTransparency;
             float *hsAovs = aovParams.mDeepAovs;
-            hitVolume = false;
-            computeRadianceRecurse(pbrTls, hsRay, hsSp, hsPv, /* lobe = */ nullptr, hsRadiance,
-                                   hsTransparency, vt, hsSequenceID, hsAovs, depth,
-                                   &deepParams, cryptomatteBuffer,
-                                   reflectedCryptomatteParamsPtr, refractedCryptomatteParamsPtr,
-                                   /* ignoreVolumes = */ true, hitVolume, Rdl2LightSetList());
+            scene_rdl2::math::Color hsRadiance = computeRadianceRecurse0(pbrTls, hsRay, hsSp, hsPv, /* lobe = */ nullptr,
+                                                                         hsTransparency, vt,
+                                                                         hsSequenceID, hsAovs, depth,
+                                                                         &deepParams, cryptomatteFlags,
+                                                                         Rdl2LightSetList());
 
             float hsAlpha = 1.f;
 
-            if (deepParams.mHitDeep) {
+            if (deepParams.mHitGeom) {
                 // put the hard surface deep intersection into the deep buffer
                 scene_rdl2::math::Vec3f hsNormal = hsRay.getNg();
                 deepBuffer->addSample(pbrTls, deepParams.mPixelX, deepParams.mPixelY,
@@ -1405,7 +1417,7 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
         } else {
             // We didn't hit a volume.  Fill in the hard surface data with the existing
             // radiance+aov values.
-            if (deepParams.mHitDeep) {
+            if (deepParams.mHitGeom) {
                 // put the hard surface deep intersection into the deep buffer
                 scene_rdl2::math::Vec3f deepNormal = ray.getNg();
                 deepBuffer->addSample(pbrTls, deepParams.mPixelX, deepParams.mPixelY,
@@ -1425,11 +1437,11 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
 
         // not deep render
         float transparency;
-        bool hitVolume = false;
-        computeRadianceRecurse(pbrTls, ray, sp, pv, nullptr, radiance,
-            transparency, vt, sequenceID, aovs, depth, nullptr, cryptomatteBuffer,
-            reflectedCryptomatteParamsPtr, refractedCryptomatteParamsPtr,
-            /* ignoreVolumes = */ false, hitVolume, Rdl2LightSetList());
+        radiance = computeRadianceRecurse0(pbrTls, ray, sp, pv, /* lobe = */ nullptr,
+                                           transparency, vt,
+                                           sequenceID, aovs, depth,
+                                           /* deepParams = */ nullptr, cryptomatteFlags,
+                                           Rdl2LightSetList());
 
         alpha = 1.f - transparency;
         pathPixelWeight = pv.pathPixelWeight;
@@ -1441,32 +1453,20 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
         }
     }
 
-    if (cryptomatteBuffer && reflectedCryptomatteParams.mHit) {
-        cryptomatteBuffer->addSampleScalar(pixelX, pixelY, reflectedCryptomatteParams.mId,
-                                                           1.0f,
-                                                           reflectedCryptomatteParams.mPosition,
-                                                           reflectedCryptomatteParams.mP0,
-                                                           reflectedCryptomatteParams.mNormal,
-                                                           scene_rdl2::math::Color4(radiance),
-                                                           reflectedCryptomatteParams.mRefP,
-                                                           reflectedCryptomatteParams.mRefN,
-                                                           reflectedCryptomatteParams.mUV,
-                                                           pv.presenceDepth,
-                                                           moonray::pbr::CRYPTOMATTE_TYPE_REFLECTED);
+    if (cryptomatteBuffer && reflectedCryptomatteResults.mHit) {
+        cryptomatteBuffer->addSampleScalar(pixelX, pixelY, 1.0f,
+                                           reflectedCryptomatteResults,
+                                           radiance,
+                                           pv.presenceDepth,
+                                           moonray::pbr::CRYPTOMATTE_TYPE_REFLECTED);
     }
 
-    if (cryptomatteBuffer && refractedCryptomatteParams.mHit) {
-        cryptomatteBuffer->addSampleScalar(pixelX, pixelY, refractedCryptomatteParams.mId,
-                                                           1.0f,
-                                                           refractedCryptomatteParams.mPosition,
-                                                           refractedCryptomatteParams.mP0,
-                                                           refractedCryptomatteParams.mNormal,
-                                                           scene_rdl2::math::Color4(radiance),
-                                                           refractedCryptomatteParams.mRefP,
-                                                           refractedCryptomatteParams.mRefN,
-                                                           refractedCryptomatteParams.mUV,
-                                                           pv.presenceDepth,
-                                                           moonray::pbr::CRYPTOMATTE_TYPE_REFRACTED);
+    if (cryptomatteBuffer && refractedCryptomatteResults.mHit) {
+        cryptomatteBuffer->addSampleScalar(pixelX, pixelY, 1.0f,
+                                           refractedCryptomatteResults,
+                                           radiance,
+                                           pv.presenceDepth,
+                                           moonray::pbr::CRYPTOMATTE_TYPE_REFRACTED);
     }
 
 #ifdef DO_AOV_RADIANCE_CLAMPING
@@ -1477,10 +1477,141 @@ PathIntegrator::computeRadiance(pbr::TLState *pbrTls, int pixelX, int pixelY,
     alpha = std::max(alpha, 0.f);
 #endif
 
-    aovSetBeautyAndAlpha(pbrTls, *fs.mAovSchema, radiance, alpha, pathPixelWeight, aovs);
+    aovSetBeautyAndAlpha(pbrTls, aovSchema, radiance, alpha, pathPixelWeight, aovs);
 
     return radiance;
 }
+
+scene_rdl2::math::Color
+PathIntegrator::computeRadiancePresence(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+        Subpixel &sp, const PathVertex &prevPv, PathVertex &pv, const shading::BsdfLobe *lobe,
+        float &transparency, float &presenceTransparency, VolumeTransmittance& vt, unsigned sequenceID, float *aovs,
+        uint32_t cryptomatteFlags, const Rdl2LightSetList& parentLobeLightSets,
+        const scene_rdl2::rdl2::Material* newPriorityList[4], int newPriorityListCount[4],
+        int currentVolumeDepth, float rayEpsilon, float presence) const
+{
+    float totalPresence = (1.0f - prevPv.totalPresence) * presence;
+
+    float rayNear = rayEpsilon;
+    float rayFar = ray.getOrigTfar() - ray.tfar;
+    if (totalPresence >= mPresenceThreshold || prevPv.presenceDepth >= mMaxPresenceDepth) {
+        // The cleanest way to terminate presence traversal is to make it impossible for the
+        // presence continuation ray to hit any more geometry.  This means we assume empty space
+        // past the last presence intersection, which will set the pixel's alpha to the
+        // total accumulated presence so far.  This is done by setting the ray's near and far
+        // distances to a large value.
+        // The other option is to assume a solid material past the last presence intersection.
+        // We don't want this because that would set the pixel alpha to 1 when we really want
+        // the alpha to be the total accumulated presence.
+        // Intuitively, you would just return here but that fails to set the path throughput
+        // and alpha correctly.  There is not a clean way to explicitly set the pixel alpha,
+        // especially in vector mode where it is not accessible at all from the presence code.
+        rayNear = scene_rdl2::math::sMaxValue * 0.5f;
+        rayFar = scene_rdl2::math::sMaxValue;
+    }
+
+    // The origin and tfar has been moved to the geometry intersection
+    // point so the new tnear is just rayEpsilon.  We also need to shorten the tfar
+    // appropriately so we don't overshoot the original ray length.
+    mcrt_common::RayDifferential presenceRay(ray, rayNear, rayFar);
+    setPriorityList(presenceRay, newPriorityList, newPriorityListCount);
+
+    // The above constructor increments the ray depth.  We want to keep the parent ray's
+    //  depth as the presence ray is a continuation of the same parent ray.  Also, if the
+    //  ray depth is incremented, lights are not visible through presence as the depth for
+    //  continued camera rays is no longer 0.
+    presenceRay.setDepth(ray.getDepth());
+
+    PathVertex newPv = pv;                  // new path vertex for continued ray
+    newPv.pathDistance += ray.getEnd();
+    newPv.pathPixelWeight *= (1-presence);  // weight of continued ray
+    newPv.aovPathPixelWeight *= (1-presence); // weight of continued ray for aov use
+    newPv.pathThroughput *= (1-presence);
+    newPv.presenceDepth++;
+    newPv.totalPresence = totalPresence;
+    newPv.volumeDepth = currentVolumeDepth;
+
+    // LPE
+    // presence is a straight event
+    if (aovs) {
+        EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
+        // transition
+        newPv.lpeStateId = pbrTls->mFs->mLightAovs->straightEventTransition(pbrTls, pv.lpeStateId);
+    }
+
+    // We need to weight the continued ray and the regular shading appropriately.
+    // Scaling the throughput and pixel weight for the path handles this properly.
+    // Note that we don't need to scale the bsdf lobes of the material if we do this.
+    pv.pathPixelWeight    *= presence;  // weight of regular shading
+    pv.aovPathPixelWeight *= presence;  // weight of regular shading for aov use
+    pv.pathThroughput     *= presence;
+
+    // Fire continued ray and add in its radiance
+    VolumeTransmittance vtPresence;
+    scene_rdl2::math::Color presenceRadiance;
+    if (ray.getDepth() == 0) {
+        presenceRadiance = computeRadianceRecurse0(pbrTls, presenceRay, sp, newPv, lobe, presenceTransparency,
+                                vtPresence, sequenceID, aovs, /* depth = */ nullptr, /* DeepParams = */ nullptr,
+                                cryptomatteFlags, parentLobeLightSets);
+    } else {
+        presenceRadiance = computeRadianceRecurse1(pbrTls, presenceRay, sp, newPv, lobe, presenceTransparency,
+                                vtPresence, sequenceID, aovs, /* cryptomatteFlags = */ 0, parentLobeLightSets);
+    }
+
+    vt.mTransmittanceE *= vtPresence.mTransmittanceE;
+    transparency = (1 - presence) * presenceTransparency;
+    return presenceRadiance;
+}
+
+
+scene_rdl2::math::Color
+PathIntegrator::computeRadianceLightsInCamera(pbr::TLState *pbrTls, mcrt_common::RayDifferential &ray,
+                                              Subpixel &sp, const PathVertex &pv, const shading::Intersection &isect,
+                                              unsigned &sequenceID, float *aovs, bool hitGeom) const
+{
+    LightIntersection hitLightIsect;
+    int numHits = 0;
+    SequenceIDIntegrator sid(0, sp.mPixel, sp.mSubpixelIndex, SequenceType::IndexSelection, sequenceID);
+    IntegratorSample1D lightChoiceSamples(sid);
+
+    const FrameState &fs = *pbrTls->mFs;
+    const Scene *scene = MNRY_VERIFY(pbrTls->mFs->mScene);
+    const AovSchema &aovSchema = *fs.mAovSchema;
+    const LightAovs &lightAovs = *fs.mLightAovs;
+
+    // Stochastically choose one light hit by the ray
+    const Light *hitLight = scene->intersectVisibleLight(ray, hitGeom ? ray.getEnd() : sInfiniteLightDistance,
+                                                         lightChoiceSamples, hitLightIsect, numHits);
+    scene_rdl2::math::Color radiance(0.f);
+    if (hitLight != nullptr) {
+        // Evaluate the radiance on the selected light in camera.
+        LightFilterRandomValues lightFilterR = {
+            scene_rdl2::math::Vec2f(0.f, 0.f), 
+            scene_rdl2::math::Vec3f(0.f, 0.f, 0.f)}; // light filters don't apply to camera rays
+        // We multiply the radiance contribution by the number of lights hit.
+        // This is equivalent to dividing by its selection probability.
+        scene_rdl2::math::Color lightValue = 
+            hitLight->eval(pbrTls->mTopLevelTls, ray.getDirection(), ray.getOrigin(), lightFilterR, ray.getTime(),
+                           hitLightIsect, true, nullptr, nullptr, ray.getDirFootprint(), nullptr, nullptr);
+        radiance = pv.pathThroughput * numHits * lightValue;
+
+        // LPE
+        if (aovs) {
+            EXCL_ACCUMULATOR_PROFILE(pbrTls, EXCL_ACCUM_AOVS);
+            // transition
+            int lpeStateId = pv.lpeStateId;
+            lpeStateId = lightAovs.lightEventTransition(pbrTls, lpeStateId, hitLight);
+            // accumulate matching aovs
+            aovAccumLightAovs(pbrTls, aovSchema, lightAovs,
+                radiance, nullptr, AovSchema::sLpePrefixNone, lpeStateId, aovs);
+        }
+    }
+
+    checkForNan(radiance, "Camera visible lights", sp, pv, ray, isect);
+
+    return radiance;
+}
+
 
 scene_rdl2::math::Color
 PathIntegrator::computeColorFromIntersection(pbr::TLState *pbrTls, int pixelX, int pixelY,

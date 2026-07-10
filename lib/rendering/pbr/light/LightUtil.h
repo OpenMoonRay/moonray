@@ -329,7 +329,6 @@ computeActiveLights(scene_rdl2::alloc::Arena *arena,
                     float rayTime,
                     // outputs
                     LightSet &lightSet,
-                    bool &hasRayTerminatorLights,
                     const Rdl2LightSetList& parentLobeLightSets);
 
 // Randomly choose a light based on how many lights have been hit so far

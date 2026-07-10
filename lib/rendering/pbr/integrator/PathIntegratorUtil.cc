@@ -663,6 +663,20 @@ applyRussianRoulette(const LightSetSampler &lSampler, LightSample *lsmp,
     }
 }
 
+float
+stochasticPresence(Subpixel &sp, const PathVertex &pv, unsigned &sequenceID, float presence)
+{
+    SequenceIDIntegrator sidPresence( sp.mPixel,
+                                      sp.mSubpixelIndex,
+                                      SequenceType::Presence,
+                                      sequenceID,
+                                      pv.presenceDepth );
+    IntegratorSample1D prSamples(sidPresence);
+    float prSample;
+    prSamples.getSample(&prSample, pv.presenceDepth);
+    return (prSample < presence) ? 1.f : 0.f;
+}
+
 void
 accumulateRayPresence(pbr::TLState *pbrTls,
                       const Light* light,

@@ -20,6 +20,8 @@
     HVD_MEMBER(float, mSampleClampingValue);                            \
     HVD_MEMBER(float, mPrimaryRayDiffScale);                            \
     HVD_MEMBER(float, mTextureDiffScale);                               \
+    HVD_PTR(void *, mCryptomatteBuffer);                                \
+    HVD_PTR(void *, mCryptomatteResultsArray);                          \
     HVD_PTR(DeferredNode *, mDeferredNodesHead);                        \
     HVD_PTR(DeferredNode **, mDeferredNodesTailPtr);                    \
     HVD_MEMBER(int, mNumDeferredNodes);                                 \
@@ -36,6 +38,8 @@
     HVD_VALIDATE(Subpixel, mSampleClampingValue);                       \
     HVD_VALIDATE(Subpixel, mPrimaryRayDiffScale);                       \
     HVD_VALIDATE(Subpixel, mTextureDiffScale);                          \
+    HVD_VALIDATE(Subpixel, mCryptomatteBuffer);                         \
+    HVD_VALIDATE(Subpixel, mCryptomatteResultsArray);                   \
     HVD_VALIDATE(Subpixel, mDeferredNodesHead);                         \
     HVD_VALIDATE(Subpixel, mDeferredNodesTailPtr);                      \
     HVD_VALIDATE(Subpixel, mNumDeferredNodes);                          \
@@ -116,9 +120,9 @@
 //----------------------------------------------------------------------------
 
 #if CACHE_LINE_SIZE == 128
-#define RAY_STATE_MEMBERS_PAD   92
+#define RAY_STATE_MEMBERS_PAD   76
 #else
-#define RAY_STATE_MEMBERS_PAD   44
+#define RAY_STATE_MEMBERS_PAD   28
 #endif
 
 #define RAY_STATE_MEMBERS                                                   \

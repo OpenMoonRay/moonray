@@ -503,15 +503,11 @@ PathIntegrator::integrateVolumeScatteringIndirect(pbr::TLState *pbrTls, const mc
         newPv.nonMirrorDepth += 1;
         newPv.volumeDepth += 1;
     
-        scene_rdl2::math::Color Ls(0.0f);
         float transparency = 0.0f;
         VolumeTransmittance vt;
-        bool hitVolume = true;
     
-        computeRadianceRecurse(pbrTls, rayIndirect, sp, newPv, nullptr, Ls, transparency, vt, sequenceID, aovs,
-                nullptr, nullptr, nullptr, nullptr, nullptr, true, hitVolume, Rdl2LightSetList());
-    
-        LIndirect += Ls;
+        LIndirect += computeRadianceRecurse1(pbrTls, rayIndirect, sp, newPv, /* lobe = */ nullptr, transparency, vt,
+                                             sequenceID, aovs, /* cryptomatteFlags = */ 0, Rdl2LightSetList());
     }
 
     return LIndirect;
@@ -1427,6 +1423,9 @@ PathIntegrator::computeRadianceVolume(pbr::TLState *pbrTls, const mcrt_common::R
     // it's a primary ray from camera.
     // Otherwise, we figure out the ray mask based on the lobe type.
     // for ray mask propagation, we simply merge with existing ray mask.
+    // TODO: this is dangerous. lobeType will be zero not just for primary rays but also if we got here via
+    // calling computeRadianceRecurse() from a volume. The only reason this currently doesn't happen is that
+    // we artificially restrict the ray paths to prevent this happening, for efficiency reasons.
     int rayMask = lobeType == 0 ?
         scene_rdl2::rdl2::CAMERA : lobeTypeToRayMask(lobeType);
     size_t intervalCount = collectVolumeIntervals(pbrTls, ray, rayMask);

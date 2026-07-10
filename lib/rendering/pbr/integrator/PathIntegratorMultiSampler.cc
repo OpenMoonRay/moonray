@@ -16,6 +16,7 @@
 #include <moonray/common/time/Timer.h>
 #include <moonray/rendering/pbr/core/Aov.h>
 #include <moonray/rendering/pbr/core/Constants.h>
+#include <moonray/rendering/pbr/core/Cryptomatte.h>
 #include <moonray/rendering/pbr/core/RayState.h>
 #include <moonray/rendering/pbr/core/PathVisualizer.h>
 #include <scene_rdl2/common/rec_time/RecTime.h>
@@ -410,8 +411,7 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
     const scene_rdl2::rdl2::Material* newPriorityList[4], int newPriorityListCount[4],
     scene_rdl2::math::Color &radiance, unsigned& sequenceID,
     float *aovs,
-    CryptomatteParams *reflectedCryptomatteParams,
-    CryptomatteParams *refractedCryptomatteParams,
+    uint32_t cryptomatteFlags,
     const Rdl2LightSetList& parentLobeLightSets) const
 {
     MNRY_ASSERT(pbrTls->isIntegratorAccumulatorRunning());
@@ -532,12 +532,10 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
             CHECK_CANCELLATION(pbrTls, return);
 
             // Recurse
-            scene_rdl2::math::Color radianceIndirect;
             float transparencyIndirect;
             // the volume attenuation along this ray to the first hit (or infinity)
             VolumeTransmittance vtIndirect;
             ++sequenceID;
-            bool hitVolume = false;
 
             // reflected/refracted cryptomatte PART B
 
@@ -553,7 +551,7 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
             // cryptomatte coverage for a pixel.
             //
             // We must be on an existing reflected/refracted cryptomatte path
-            // ( reflectedCryptomatteParams != nullptr or refractedCryptomatteParams != nullptr).
+            // ( reflectedCryptomatteResults != nullptr or refractedCryptomatteResults != nullptr).
             //
             // The material must also be set to be "record_reflected_cryptomatte" or "record_refracted_cryptomatte".
             // Materials must be explicitly tagged because just examining the lobe's flags is not 100%
@@ -561,7 +559,7 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
             // materials and special cases such as hair that have counterintuitive flags.
             //
             // See the other cryptomatte logic in "reflected/refracted cryptomatte PART A" that
-            // uses the newRefractedCryptomatteParams set up here.
+            // uses the newRefractedCryptomatteResults set up here.
             const bool glossyOrMirrorReflection =
                 ((lobe->getType() & shading::BsdfLobe::REFLECTION) &&
                  ((lobe->getType() & shading::BsdfLobe::GLOSSY) ||
@@ -575,19 +573,15 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
             const scene_rdl2::rdl2::Material* material =
                 isect.getMaterial()->asA<scene_rdl2::rdl2::Material>();
 
-            CryptomatteParams *newReflectedCryptomatteParams =
-                                          (reflectedCryptomatteParams &&
-                                           i == 0 &&
-                                           glossyOrMirrorReflection &&
-                                           material->getRecordReflectedCryptomatte()) ?
-                                           reflectedCryptomatteParams : nullptr;
-
-            CryptomatteParams *newRefractedCryptomatteParams =
-                                          (refractedCryptomatteParams &&
-                                           i == 0 &&
-                                           glossyOrMirrorTransmission &&
-                                           material->getRecordRefractedCryptomatte()) ?
-                                           refractedCryptomatteParams : nullptr;
+            uint32_t newCryptomatteFlags = 0;
+            if (i==0) {
+                if (material->getRecordReflectedCryptomatte() && glossyOrMirrorReflection) {
+                    newCryptomatteFlags |= (cryptomatteFlags & CRYPTOMATTE_FLAG_REFLECTED);
+                }
+                if (material->getRecordRefractedCryptomatte() && glossyOrMirrorTransmission) {
+                    newCryptomatteFlags |= (cryptomatteFlags & CRYPTOMATTE_FLAG_REFRACTED);
+                }
+            }
 
             // Append this lobe's lightset to the parent lobes' lists
             const scene_rdl2::rdl2::LightSet* lobeLightSet = lobe->getLightSet();
@@ -596,20 +590,12 @@ PathIntegrator::addIndirectAndDirectVisibleContributions(
                 newParentLobeLightSets.append(lobeLightSet);
             }
 
-            IndirectRadianceType indirectRadianceType = computeRadianceRecurse(
-                    pbrTls, ray, sp,
-                    pv, lobe, radianceIndirect, transparencyIndirect,
-                    vtIndirect, sequenceID, aovs, nullptr, nullptr, nullptr,
-                    newReflectedCryptomatteParams, newRefractedCryptomatteParams, false, hitVolume,
-                    newParentLobeLightSets);
+            radiance += computeRadianceRecurse1(pbrTls, ray, sp,
+                                                pv, lobe, transparencyIndirect,
+                                                vtIndirect, sequenceID, aovs,
+                                                newCryptomatteFlags,
+                                                newParentLobeLightSets);
 
-            if (indirectRadianceType != NONE) {
-                // Accumulate indirect lighting contribution
-                // In the bundled version, this contribution gets accounted for by
-                // queueing a BundledRadiance for the direct radiance and/or emission,
-                // and spawning one or more new rays for the indirect radiance.
-                radiance += radianceIndirect;
-            }
             if (!bsmp[s].didHitLight()) {
                 const FrameState &fs = *pbrTls->mFs;
                 const AovSchema &aovSchema = *fs.mAovSchema;
@@ -636,8 +622,7 @@ PathIntegrator::computeRadianceBsdfMultiSampler(pbr::TLState *pbrTls,
     int newPriorityListCount[4], const LightSet &activeLightSet, const scene_rdl2::math::Vec3f *cullingNormal,
     float rayEpsilon, float shadowRayEpsilon,
     const scene_rdl2::math::Color &ssAov, unsigned &sequenceID, float *aovs,
-    CryptomatteParams *reflectedCryptomatteParams,
-    CryptomatteParams *refractedCryptomatteParams,
+    uint32_t cryptomatteFlags,
     const Rdl2LightSetList& parentLobeLightSets) const
 {
     // TODO:
@@ -738,7 +723,7 @@ PathIntegrator::computeRadianceBsdfMultiSampler(pbr::TLState *pbrTls,
         // Note: This will recurse
         addIndirectAndDirectVisibleContributions(pbrTls, sp, pv, bSampler, bsmp,
                 ray, rayEpsilon, shadowRayEpsilon, isect, indirectFlags, newPriorityList, newPriorityListCount,
-                radiance, sequenceID, aovs, reflectedCryptomatteParams, refractedCryptomatteParams, parentLobeLightSets);
+                radiance, sequenceID, aovs, cryptomatteFlags, parentLobeLightSets);
         checkForNan(radiance, "Indirect and direct contributions", sp, pv, ray,
                 isect);
     } else {
