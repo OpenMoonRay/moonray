@@ -58,6 +58,7 @@ Bsdf_show(const varying Bsdf &bsdf,
         } else {
             print("<LightSet> : '<none>'\n");
         }
+        print("label: %\n", lobe->mLabel);
         BsdfLobe_show(lobe, 0);
         print("\n");
     }
