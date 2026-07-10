@@ -397,7 +397,10 @@ MeshLight_sample(const uniform Light * uniform li,
         faceIndex = MeshLight_drawSampleRecurse(light, transformedP, nullptr, 0, r3, pdf);
     }
 
-    MNRY_ASSERT(isfinite(pdf) && pdf >= 0.0f);
+    MNRY_ASSERT(isfinite(pdf) && pdf > 0.0f);
+    if (!isfinite(pdf) || pdf <= 0.0f) {
+        return false;
+    }
     MNRY_ASSERT(Node_isLeaf(&light->mBVHPtr[faceIndex]));
 
     const uniform Face * varying face = light->mBVHPtr[faceIndex].mFace;
@@ -412,6 +415,20 @@ MeshLight_sample(const uniform Light * uniform li,
         Vec3f p2 = MeshLight_getFaceVertex(light, face, 1, time);
         Vec3f p3 = MeshLight_getFaceVertex(light, face, 2, time);
 
+        if (light->mDeformationMb) {
+            const Vec3f crossProd = cross(p2 - p1, p3 - p1);
+            const float crossLen = length(crossProd);
+            // Handle degenerate, zero-area triangles
+            if (crossLen < sEpsilon) {
+                return false;
+            }
+            // We cannot directly use face.mNormal here because it is the normal at
+            // time = centroidTime. Therefore we compute it here.
+            normal = crossProd / crossLen;
+        } else {
+            normal = face->mNormal;
+        }
+
         // the random numbers r1 and r2 can be used as uv coordinates
         float u = r1;
         float v = r2;
@@ -423,14 +440,6 @@ MeshLight_sample(const uniform Light * uniform li,
             w = -w;
         }
         hit = w*p1 + u*p2 + v*p3;
-
-        if (light->mDeformationMb) {
-            // We cannot directly use face.mNormal here because it is the normal at
-            // time = centroidTime. Therefore we compute it here.
-            normal = normalize(cross(p2 - p1, p3 - p1));
-        } else {
-            normal = face->mNormal;
-        }
 
         if (light->mMapShader) {
             // get barycentric coordinate for hit
