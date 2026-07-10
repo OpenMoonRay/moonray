@@ -268,33 +268,10 @@ DiskLight_sample(const uniform Light * uniform li,
     //    we are in a good region to sample the spread, then sample that region.
     // 3) Otherwise, sample the shape of the light.
     if (light->mDistribution) {
-        // Sample the image distribution if any
-
-        // This type of technique is bad for for vector processors in general
-        // since some lanes will go idle as the rejection loop still needs to
-        // iterate for other lanes. It should work fine here though because the
-        // distribution has been pre-built with a low probability of sampling
-        // outside of the inscribed circle by using ImageDistribution::CIRCULAR.
-        // This should ensure we only loop rarely.
-        const uniform uint32_t maxTries = 8;
-        uniform uint32_t attempts = 0;
-        while (attempts != maxTries) {
-            ImageDistribution_sample(light->mDistribution, r1, r2, 0, &isect.uv, nullptr, light->mTextureFilter);
-            float x = isect.uv.x * 2.0f - 1.0f;
-            float y = isect.uv.y * 2.0f - 1.0f;
-            if (x*x + y*y < 1.0f) {
-                break;
-            }
-
-            // Generate new random numbers based on these ones.
-            // TODO: this is hacky code, do a better job of generating
-            //       further random numbers
-            r1 = fmod(r1 + 0.789f, 1.0f);
-            r2 = fmod(r2 + 0.331f, 1.0f);
-            attempts++;
-        }
-
-        if (attempts == maxTries) {
+        ImageDistribution_sample(light->mDistribution, r1, r2, 0, &isect.uv, nullptr, light->mTextureFilter);
+        float x = isect.uv.x * 2.0f - 1.0f;
+        float y = isect.uv.y * 2.0f - 1.0f;
+        if (x*x + y*y >= 1.0f) {
             return false;
         }
 
