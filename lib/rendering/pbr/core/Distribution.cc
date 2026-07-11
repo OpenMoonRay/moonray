@@ -551,27 +551,35 @@ Distribution2D::tabulateCdf(Mapping mapping)
     }
 
     case CIRCULAR: {
-        // Weights outside of the maximal inscribed circle are set to black so
-        // we don't (or rarely) sample them.
-        // note: We are slighly pushing out the extents so we don't get full
-        //       black for the edge scanlines.
+        // Set to near-zero the sampling weights of any texels which don't overlap the inscribed circle,
+        // so that we generate almost no samples inside such texels.
+        // TODO: support setting them to exactly zero.
+
         float sclU, ofsU, sclV, ofsV;
         getScaleOffset(-0.5f, float(sizeU) - 0.5f, -1.0f, 1.0f, &sclU, &ofsU);
         getScaleOffset(-0.5f, float(sizeV) - 0.5f, -1.0f, 1.0f, &sclV, &ofsV);
 
+        const float halfTexelU = 2.0f / float(sizeU);
+        const float halfTexelV = 2.0f / float(sizeV);
+
         tbb::parallel_for(tbb::blocked_range<size_type>(0, sizeV, sizeV / sRangeDivider),
                           [&](const tbb::blocked_range<size_type> range) {
             for (size_type y = range.begin(); y < range.end(); ++y) {
-                float t = float(y) * sclV + ofsV;
-                float t2 = t * t;
+                const float tCenter = float(y) * sclV + ofsV;
+                const float tCorner = scene_rdl2::math::abs(tCenter) - halfTexelV;
+                const float t = max(tCorner, 0.0f);
+                const float t2 = t * t;
                 for (size_type x = 0; x < sizeU; ++x) {
-                    float s = float(x) * sclU + ofsU;
+                    const float sCenter = float(x) * sclU + ofsU;
+                    const float sCorner = scene_rdl2::math::abs(sCenter) - halfTexelU;
+                    const float s = max(sCorner, 0.0f);
                     if (s*s + t2 > 1.0f) {
                         setWeight(x, y, sEpsilon);
                     }
                 }
             }
         });
+
         break;
     }
     default: {
