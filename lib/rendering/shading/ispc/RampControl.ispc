@@ -264,8 +264,16 @@ evaluateMonotoneSlopes(varying ColorRampControl* uniform rampControl)
 }
 
 #define FIND_RAMP_SPAN_BODY                                 \
+    if (numEntries <= 0) {                                  \
+        leftIdx = -1;                                       \
+        rightIdx = -1;                                      \
+        return;                                             \
+    }                                                       \
     leftIdx = 0;                                            \
     rightIdx = numEntries - 1;                              \
+    if (numEntries == 1) {                                  \
+        return;                                             \
+    }                                                       \
                                                             \
     if (t < inputs[leftIdx]) {                              \
         leftIdx = -1;                                       \
@@ -554,61 +562,60 @@ blendAdjustment(const ColorRampControlSpace colorspace,
     result = leftOutput + weight * (rightOutput - leftOutput);                                  \
 
 #define EVAL_1D_COLOR_BODY                                                                      \
-    if (rampControl->mNumEntries == 0) {                                                        \
-        return sBlack;                                                                          \
-    }                                                                                           \
-                                                                                                \
-    int leftIdx, rightIdx;                                                                      \
-    findRampSpan(rampControl->mNumEntries, rampControl->mInputs, t, leftIdx, rightIdx);         \
-                                                                                                \
-    cif (leftIdx == -1) {                                                                       \
-        return rampControl->mOutputs[0];                                                        \
-    }                                                                                           \
-    cif (rightIdx == -1) {                                                                      \
-        return rampControl->mOutputs[rampControl->mNumEntries - 1];                             \
-    }                                                                                           \
-                                                                                                \
-    const float spanLength = rampControl->mInputs[rightIdx] - rampControl->mInputs[leftIdx];    \
-    cif (isZero(spanLength)) {                                                                  \
-        return rampControl->mOutputs[leftIdx];                                                  \
-    }                                                                                           \
-                                                                                                \
     Color result = sBlack;                                                                      \
-    float weight = 0.0f;                                                                        \
+    if (rampControl->mNumEntries != 0) {                                                        \
+        int leftIdx, rightIdx;                                                                  \
+        findRampSpan(rampControl->mNumEntries, rampControl->mInputs, t, leftIdx, rightIdx);     \
                                                                                                 \
-    t = (t - rampControl->mInputs[leftIdx]) / spanLength;                                       \
+        if (leftIdx == -1) {                                                                    \
+            result = rampControl->mOutputs[0];                                                  \
+        } else if (rightIdx == -1) {                                                            \
+            result = rampControl->mOutputs[rampControl->mNumEntries - 1];                       \
+        } else {                                                                                \
+            const float spanLength = rampControl->mInputs[rightIdx] - rampControl->mInputs[leftIdx];    \
+            if (!isZero(spanLength)) {                                                          \
+                float weight = 0.0f;                                                            \
+                t = (t - rampControl->mInputs[leftIdx]) / spanLength;                           \
                                                                                                 \
-    RampInterpolatorMode interpolator = rampControl->mInterpolators[leftIdx];                   \
+                RampInterpolatorMode interpolator = rampControl->mInterpolators[leftIdx];       \
                                                                                                 \
-    switch (interpolator) {                                                                     \
-    case RAMP_INTERPOLATOR_MODE_NONE:                                                           \
-        weight = 0.0f;                                                                          \
-        break;                                                                                  \
-    case RAMP_INTERPOLATOR_MODE_LINEAR:                                                         \
-        weight = t;                                                                             \
-        break;                                                                                  \
-    case RAMP_INTERPOLATOR_MODE_EXPONENTIAL_UP:                                                 \
-        weight = t * t;                                                                         \
-        break;                                                                                  \
-    case RAMP_INTERPOLATOR_MODE_EXPONENTIAL_DOWN:                                               \
-        weight = 1.0f - t;                                                                      \
-        weight = 1.0f - (weight * weight);                                                      \
-        break;                                                                                  \
-    case RAMP_INTERPOLATOR_MODE_SMOOTH:                                                         \
-        weight = sin(t *  sHalfPi);                                                             \
-        break;                                                                                  \
-    case RAMP_INTERPOLATOR_MODE_CATMULLROM:                                                     \
-    case RAMP_INTERPOLATOR_MODE_MONOTONECUBIC:                                                  \
-        result = computeCubicSplineValue(leftIdx, t, interpolator, rampControl);                \
-        return result;                                                                          \
+                switch (interpolator) {                                                         \
+                case RAMP_INTERPOLATOR_MODE_NONE:                                               \
+                    weight = 0.0f;                                                              \
+                    break;                                                                      \
+                case RAMP_INTERPOLATOR_MODE_LINEAR:                                             \
+                    weight = t;                                                                 \
+                    break;                                                                      \
+                case RAMP_INTERPOLATOR_MODE_EXPONENTIAL_UP:                                     \
+                    weight = t * t;                                                             \
+                    break;                                                                      \
+                case RAMP_INTERPOLATOR_MODE_EXPONENTIAL_DOWN:                                   \
+                    weight = 1.0f - t;                                                          \
+                    weight = 1.0f - (weight * weight);                                          \
+                    break;                                                                      \
+                case RAMP_INTERPOLATOR_MODE_SMOOTH:                                             \
+                    weight = sin(t *  sHalfPi);                                                 \
+                    break;                                                                      \
+                case RAMP_INTERPOLATOR_MODE_CATMULLROM:                                         \
+                case RAMP_INTERPOLATOR_MODE_MONOTONECUBIC:                                      \
+                    result = computeCubicSplineValue(leftIdx, t, interpolator, rampControl);    \
+                    break;                                                                      \
+                }                                                                               \
+                                                                                                \
+                if (interpolator != RAMP_INTERPOLATOR_MODE_CATMULLROM &&                        \
+                    interpolator != RAMP_INTERPOLATOR_MODE_MONOTONECUBIC) {                     \
+                    Color leftOutput = rampControl->mOutputs[leftIdx];                          \
+                    Color rightOutput = rampControl->mOutputs[rightIdx];                        \
+                    if (rampControl->mApplyHueBlendAdjustment) {                                \
+                        blendAdjustment(rampControl->mColorSpace, leftOutput, rightOutput);     \
+                    }                                                                           \
+                    result = leftOutput + weight * (rightOutput - leftOutput);                  \
+                }                                                                               \
+            } else {                                                                            \
+                result = rampControl->mOutputs[leftIdx];                                        \
+            }                                                                                   \
+        }                                                                                       \
     }                                                                                           \
-                                                                                                \
-    Color leftOutput = rampControl->mOutputs[leftIdx];                                          \
-    Color rightOutput = rampControl->mOutputs[rightIdx];                                        \
-    if (rampControl->mApplyHueBlendAdjustment) {                                                \
-        blendAdjustment(rampControl->mColorSpace, leftOutput, rightOutput);                     \
-    }                                                                                           \
-    result = leftOutput + weight * (rightOutput - leftOutput);                                  \
 
 varying float
 FloatRampControl_eval1D(varying float t,
