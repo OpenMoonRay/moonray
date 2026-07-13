@@ -27,10 +27,10 @@ ToonBsdfLobe_eval(const varying BsdfLobe * uniform lobe,
                            sEpsilon));  // Must be > 1e-9
     }
 
-    const float cosThetaWi = max(dot(N, wi), 0.0f);
+    const float cosThetaWi = dot(N, wi);
 
     if (pdf != NULL) {
-        *pdf = cosThetaWi * sOneOverPi;
+        *pdf = max(cosThetaWi, 0.0f) * sOneOverPi;
     }
 
     // Note: we assume this lobe has been setup with a OneMinus*Fresnel
