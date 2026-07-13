@@ -366,5 +366,107 @@ template void LocalMotionBlur::apply(const MotionBlurType mbType,
                                      VertexBuffer<Vec3fa, InterleavedTraits>& vertices,
                                      PrimitiveAttributeTable& primitiveAttributeTable) const;
 
+std::unique_ptr<LocalMotionBlur>
+createFromPointLists(
+    const geom::GenerateContext& generateContext,
+    const std::vector<Vec3f>& pointList,
+    const std::vector<scene_rdl2::math::Vec4f>& orientList,
+    const std::vector<Vec3f>& scaleList,
+    const std::vector<float>& radiusList,
+    const std::vector<float>& innerRadiusList,
+    const std::vector<float>& multiplierList,
+    float strengthMult,
+    float radiusMult,
+    XformSamples& parent2render)
+{
+    const Geometry* rdlGeometry = generateContext.getRdlGeometry();
+    const size_t numPoints = pointList.size();
+
+    const bool hasOrients     = (orientList.size()      == numPoints);
+    const bool hasScales      = (scaleList.size()       == numPoints);
+    const bool hasRadii       = (radiusList.size()      == numPoints);
+    const bool hasInnerRadii  = (innerRadiusList.size() == numPoints);
+    const bool hasMultipliers = (multiplierList.size()  == numPoints);
+
+    if (!hasOrients && !orientList.empty()) {
+        rdlGeometry->warn("local_motion_blur_orient_list size (", orientList.size(),
+                          ") does not match point count (", numPoints, "), ignoring");
+    }
+    if (!hasScales && !scaleList.empty()) {
+        rdlGeometry->warn("local_motion_blur_scale_list size (", scaleList.size(),
+                          ") does not match point count (", numPoints, "), ignoring");
+    }
+    if (!hasRadii && !radiusList.empty()) {
+        rdlGeometry->warn("local_motion_blur_radius_list size (", radiusList.size(),
+                          ") does not match point count (", numPoints, "), ignoring");
+    }
+    if (!hasInnerRadii && !innerRadiusList.empty()) {
+        rdlGeometry->warn("local_motion_blur_inner_radius_list size (", innerRadiusList.size(),
+                          ") does not match point count (", numPoints, "), ignoring");
+    }
+    if (!hasMultipliers && !multiplierList.empty()) {
+        rdlGeometry->warn("local_motion_blur_multiplier_list size (", multiplierList.size(),
+                          ") does not match point count (", numPoints, "), ignoring");
+    }
+
+    std::vector<XformSamples> regionXforms;
+    PrimitiveAttributeTable lmbAttributeTable;
+    std::vector<float> radii, innerRadii, multipliers;
+    regionXforms.reserve(numPoints);
+    radii.reserve(numPoints);
+    innerRadii.reserve(numPoints);
+    multipliers.reserve(numPoints);
+
+    for (size_t i = 0; i < numPoints; ++i) {
+        Vec3f scale(one);
+        if (hasScales) scale = scaleList[i];
+
+        Quaternion3f orient(one);
+        if (hasOrients) {
+            const auto& q = orientList[i];
+            // Vec4f stores (i, j, k, r) in (x, y, z, w) to match Alembic orient convention
+            orient = normalize(Quaternion3f(q.w, q.x, q.y, q.z));
+        }
+        const Xform3f xf(Mat3f::scale(scale) * Mat3f(orient), pointList[i]);
+        regionXforms.push_back({xf});
+
+        radii.push_back(      hasRadii       ? radiusList[i]      : 1.0f);
+        innerRadii.push_back( hasInnerRadii  ? innerRadiusList[i] : 1.0f);
+        multipliers.push_back(hasMultipliers ? multiplierList[i]  : 1.0f);
+    }
+
+    if (!regionXforms.empty()) {
+        lmbAttributeTable.addAttribute(TypedAttributeKey<float>("radius"),
+                                       RATE_VERTEX, std::move(radii));
+        lmbAttributeTable.addAttribute(TypedAttributeKey<float>("inner_radius"),
+                                       RATE_VERTEX, std::move(innerRadii));
+        lmbAttributeTable.addAttribute(TypedAttributeKey<float>("multiplier"),
+                                       RATE_VERTEX, std::move(multipliers));
+        return std::make_unique<LocalMotionBlur>(
+            generateContext,
+            regionXforms,
+            lmbAttributeTable,
+            rdlGeometry->getUseLocalCameraMotionBlur(),
+            strengthMult,
+            radiusMult);
+    } else {
+        // use_local_motion_blur is enabled but no regions were provided.
+        // The renderer skips node_xform when LMB is active, so apply it here.
+        const Mat4d mat0 = rdlGeometry->get(Node::sNodeXformKey, TIMESTEP_BEGIN);
+        const Mat4d mat1 = rdlGeometry->get(Node::sNodeXformKey, TIMESTEP_END);
+        const Xform3f x0(mat0.vx.x, mat0.vx.y, mat0.vx.z,
+                         mat0.vy.x, mat0.vy.y, mat0.vy.z,
+                         mat0.vz.x, mat0.vz.y, mat0.vz.z,
+                         mat0.vw.x, mat0.vw.y, mat0.vw.z);
+        const Xform3f x1(mat1.vx.x, mat1.vx.y, mat1.vx.z,
+                         mat1.vy.x, mat1.vy.y, mat1.vy.z,
+                         mat1.vz.x, mat1.vz.y, mat1.vz.z,
+                         mat1.vw.x, mat1.vw.y, mat1.vw.z);
+        const XformSamples nodeXform = {x0, x1};
+        parent2render = concatenate(nodeXform, parent2render);
+        return nullptr;
+    }
+}
+
 } // end local_motion_blur
 } // end namespace moonray
