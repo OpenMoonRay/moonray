@@ -21,6 +21,38 @@ DistantLight_hudValidation(uniform bool verbose)
 
 
 //----------------------------------------------------------------------------
+// For details of localToUv() and uvToLocal() see notes in DistantLight.cc
+
+static Vec2f
+DistantLight_localToUv(const uniform DistantLight * uniform light,
+                       const varying Vec3f &dir)
+{
+    MNRY_ASSERT(isNormalized(dir));
+
+    const varying float oneMinusZ = max(1.0f - dir.z, 1.0e-20f);    // protect against negative arg to sqrt and div by zero
+    const varying float scale = -light->mLocalToUvConst / sqrt(oneMinusZ);
+
+    const varying float u = clamp(dir.x * scale + 0.5f, 0.0f, 1.0f);
+    const varying float v = clamp(dir.y * scale + 0.5f, 0.0f, 1.0f);
+
+    return Vec2f_ctor(u, v);
+}
+
+static Vec3f
+DistantLight_uvToLocal(const uniform DistantLight * uniform light,
+                       const varying Vec2f &uv)
+{
+    const varying float u1 = uv.x - 0.5f;
+    const varying float v1 = uv.y - 0.5f;
+
+    const varying float z = -1.0f + light->mUvToLocalConst * (u1*u1 + v1*v1);
+    const varying float scale = -sqrt(light->mUvToLocalConst * (1.0f + z));
+
+    const varying float x = u1 * scale;
+    const varying float y = v1 * scale;
+
+    return Vec3f_ctor(x, y, z);
+}
 
 static Vec3f
 DistantLight_localToGlobal(const uniform DistantLight * uniform light,
@@ -28,8 +60,17 @@ DistantLight_localToGlobal(const uniform DistantLight * uniform light,
 {
     if (!light->mMb) return localToGlobal(light->mFrame, v);
 
-    // construct a new frame
     varying Mat3f m = Mat3f_ctor(slerp(light->mOrientation[0], light->mOrientation[1], time));
+    return v * m;
+}
+
+static Vec3f
+DistantLight_globalToLocal(const uniform DistantLight * uniform light,
+                           const varying Vec3f &v, varying float time)
+{
+    if (!light->mMb) return globalToLocal(light->mFrame, v);
+
+    varying Mat3f m = transpose(Mat3f_ctor(slerp(light->mOrientation[0], light->mOrientation[1], time)));
     return v * m;
 }
 
@@ -70,7 +111,9 @@ DistantLight_canIlluminate(const uniform Light * uniform li,
     // Don't illuminate as a regular light if referenced by a portal
     if (li->mHasPortal) return false;
 
-    if (isValidCullingNormal(cullingNormal) && dot(neg(cullingNormal), Light_getDirection(li, time)) < light->mCullThreshold) {
+    // The sense of this comparison takes into account the 180-degree rotation built into
+    // DistantLight's localToRender matrix.
+    if (isValidCullingNormal(cullingNormal) && dot(cullingNormal, Light_getDirection(li, time)) > light->mCullThreshold) {
         return false;
     }
 
@@ -98,7 +141,9 @@ DistantLight_intersect(const uniform Light * uniform li,
 {
     const uniform DistantLight * uniform light = (const uniform DistantLight * uniform)li;
 
-    if (dot(neg(wi), Light_getDirection(li, time)) < light->mCosThetaMax) {
+    // DistantLight's localToRender matrix has a built-in 180-degree rotation for consistency with DiskLight.
+    // This has the effect of negating any dot product with the light's z-axis, so we must negate cos thetaMax here.
+    if (dot(wi, Light_getDirection(li, time)) > -light->mCosThetaMax) {
         return false;
     }
 
@@ -108,10 +153,19 @@ DistantLight_intersect(const uniform Light * uniform li,
 
     isect.N = neg(wi);
     isect.distance = sDistantLightDistance;
-    isect.uv = Vec2f_ctor(0.0f);
+    isect.uv = light->mDistribution ? DistantLight_localToUv(light, DistantLight_globalToLocal(light, wi, time))
+                                    : Vec2f_ctor(0.0f);
 
     return true;
 }
+
+varying float
+DistantLight_getMipLevel(const uniform Light * uniform li, varying float rayDirFootprint)
+{
+    const uniform DistantLight * uniform light = (const uniform DistantLight * uniform)li;
+    return rayDirFootprint - light->mLog2TexelAngle;
+}
+
 
 varying bool
 DistantLight_sample(const uniform Light * uniform li,
@@ -122,8 +176,25 @@ DistantLight_sample(const uniform Light * uniform li,
 
     MNRY_ASSERT(li->mOn);
 
-    Vec3f sample = sampleLocalSphericalCapUniform2(r.x, r.y, light->mVersineThetaMax);
-    wi = neg(DistantLight_localToGlobal(light, sample, time));
+    if (light->mDistribution) {
+        float mipLevel = DistantLight_getMipLevel(li, rayDirFootprint);
+        ImageDistribution_sample(light->mDistribution, r.x, r.y, mipLevel, &isect.uv, nullptr, light->mTextureFilter);
+        float U = isect.uv.x * 2.0f - 1.0f;
+        float V = isect.uv.y * 2.0f - 1.0f;
+        if (U*U + V*V >= 1.0f) {
+            return false;
+        }
+        Vec3f wiLocal = DistantLight_uvToLocal(light, isect.uv);
+        wi = DistantLight_localToGlobal(light, wiLocal, time);
+    } else {
+        // The cap sampling utiility function generates a position on a cap centered on the frame's positive z-axis.
+        // DistantLight is also defined to lie on the positive z-axis of its local frame; however its localToRender
+        // matrix has a built-in 180-degree rotation, so we negate the generated cap direction to produce the local
+        // wi vector.
+        Vec3f wiLocal = neg(sampleLocalSphericalCapUniform2(r.x, r.y, light->mVersineThetaMax));
+        wi = DistantLight_localToGlobal(light, wiLocal, time);
+        isect.uv = Vec2f_ctor(0.0f);
+    }
 
     if (isValidCullingNormal(cullingNormal)  &&  dot(cullingNormal, wi) < sEpsilon) {
         return false;
@@ -131,7 +202,6 @@ DistantLight_sample(const uniform Light * uniform li,
 
     isect.N = neg(wi);
     isect.distance = sDistantLightDistance;
-    isect.uv = Vec2f_ctor(0.0f);
 
     return true;
 }
@@ -149,7 +219,13 @@ DistantLight_eval(const uniform Light * uniform li, uniform ShadingTLState * uni
 
     MNRY_ASSERT(light->mOn);
 
+    float mipLevel = DistantLight_getMipLevel(li, rayDirFootprint);
+
     Color radiance = light->mRadiance;
+    if (light->mDistribution) {
+        radiance = radiance * ImageDistribution_eval(light->mDistribution, isect.uv.x, isect.uv.y, mipLevel,
+                                                     light->mTextureFilter);
+    }
 
     if (lightFilterList) {
         EvalData evalData;
@@ -169,8 +245,14 @@ DistantLight_eval(const uniform Light * uniform li, uniform ShadingTLState * uni
     }
 
     if (pdf) {
-        *pdf = light->mInvArea;
+        if (light->mDistribution) {
+            *pdf = ImageDistribution_pdf(light->mDistribution, isect.uv.x, isect.uv.y, mipLevel, light->mTextureFilter)
+                    * light->mJacobian;
+        } else {
+            *pdf = light->mInvArea;
+        }
     }
+
     return radiance;
 }
 

@@ -255,21 +255,26 @@ enum LightSidednessType
 
 #define DISTANT_LIGHT_MEMBERS                                            \
     /* The Sun is typically 0.53 degrees */                              \
-    HUD_MEMBER(float, mAngularExtent);                                   \
-                                                                         \
     HUD_MEMBER(HUD_NAMESPACE(scene_rdl2::math, ReferenceFrame), mFrame); \
     HUD_MEMBER(float, mCullThreshold);                                   \
     HUD_MEMBER(float, mCosThetaMax);                                     \
-    HUD_MEMBER(float, mVersineThetaMax)
+    HUD_MEMBER(float, mVersineThetaMax);                                 \
+    HUD_MEMBER(float, mJacobian);                                        \
+    HUD_MEMBER(float, mLog2TexelAngle);                                  \
+    HUD_MEMBER(float, mLocalToUvConst);                                  \
+    HUD_MEMBER(float, mUvToLocalConst)
 
 
 #define DISTANT_LIGHT_VALIDATION                    \
     HUD_BEGIN_VALIDATION(DistantLight);             \
-    HUD_VALIDATE(DistantLight, mAngularExtent);     \
     HUD_VALIDATE(DistantLight, mFrame);             \
     HUD_VALIDATE(DistantLight, mCullThreshold);     \
     HUD_VALIDATE(DistantLight, mCosThetaMax);       \
     HUD_VALIDATE(DistantLight, mVersineThetaMax);   \
+    HUD_VALIDATE(DistantLight, mJacobian);          \
+    HUD_VALIDATE(DistantLight, mLog2TexelAngle);    \
+    HUD_VALIDATE(DistantLight, mLocalToUvConst);    \
+    HUD_VALIDATE(DistantLight, mUvToLocalConst);    \
     HUD_END_VALIDATION
 
 

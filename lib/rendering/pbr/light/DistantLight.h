@@ -74,15 +74,22 @@ public:
 private:
     void initAttributeKeys(const scene_rdl2::rdl2::SceneClass &sc);
 
-    scene_rdl2::math::Vec3f localToGlobal(const scene_rdl2::math::Vec3f &v,
-                              float time) const;
-    scene_rdl2::math::Vec3f globalToLocal(const scene_rdl2::math::Vec3f &v,
-                              float time) const;
+
+    scene_rdl2::math::Vec2f localToUv(const scene_rdl2::math::Vec3f &dir) const;
+    scene_rdl2::math::Vec3f uvToLocal(const scene_rdl2::math::Vec2f &uv)  const;
+
+    scene_rdl2::math::Vec3f localToGlobal(const scene_rdl2::math::Vec3f &v, float time) const;
+    scene_rdl2::math::Vec3f globalToLocal(const scene_rdl2::math::Vec3f &v, float time) const;
     scene_rdl2::math::Xform3f globalToLocalXform(float time, bool needed = true) const;
 
     /// Copy is disabled
     DistantLight(const DistantLight &other);
     const DistantLight &operator=(const DistantLight &other);
+
+    float getMipLevel(float rayDirFootprint) const
+    {
+        return rayDirFootprint - mLog2TexelAngle;
+    }
 
     DISTANT_LIGHT_MEMBERS;
 
