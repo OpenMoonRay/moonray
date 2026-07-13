@@ -73,8 +73,11 @@ public:
 
                     for (int pixY = startY; pixY < endY; ++pixY) {
                         for (int pixX = startX; pixX < endX; ++pixX) {
-                            int pixCount = (spec.height - pixY - 1) * spec.width + pixX; // flip Y to access pix
-                            int pixOffsetId = pixCount * spec.nchannels;
+                            size_t pixCount =
+                                static_cast<size_t>(spec.height - pixY - 1) *
+                                static_cast<size_t>(spec.width) + static_cast<size_t>(pixX); // flip Y to access pix
+                            size_t pixOffsetId =
+                                static_cast<size_t>(pixCount) * static_cast<size_t>(spec.nchannels);
                             pixFunc(pixX, pixY, spec.width, &mPixels[pixOffsetId]);
                         } // pixX
                     } // pixY
@@ -109,8 +112,11 @@ public:
                     int endX = (startX + 8 < spec.width)? startX + 8: spec.width;
 
                     for (int pixY = startY; pixY < endY; ++pixY) {
-                        int startPixCount = (spec.height - pixY - 1) * spec.width + startX; // flip Y to access pix
-                        int startPixOffsetId = startPixCount * spec.nchannels;
+                        size_t startPixCount =
+                            static_cast<size_t>(spec.height - pixY - 1) *
+                            static_cast<size_t>(spec.width) + static_cast<size_t>(startX); // flip Y to access pix
+                        size_t startPixOffsetId =
+                            static_cast<size_t>(startPixCount) * static_cast<size_t>(spec.nchannels);
                         scanlineFunc(startX, endX, pixY, spec.nchannels, &mPixels[startPixOffsetId]);
                     } // pixY
                 } // tileX
