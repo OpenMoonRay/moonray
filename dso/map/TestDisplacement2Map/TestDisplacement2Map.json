@@ -1,0 +1,14 @@
+{
+	"attributes" : 
+	{
+		"inAttr" : 
+		{
+			"default" : "Vec3f(0.0f, 0.0f, 0.0f)",
+			"flags" : "FLAGS_BINDABLE",
+			"name" : "in",
+			"type" : "Vec3f"
+		}
+	},
+	"name" : "TestDisplacement2Map",
+	"type" : "Map"
+}

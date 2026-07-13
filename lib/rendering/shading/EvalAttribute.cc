@@ -249,6 +249,113 @@ evalColorComponent(const rdl2::Shader* const obj,
     return result;
 }
 
+
+scene_rdl2::rdl2::Bool
+evalBool(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Bool>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Bool result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::Int
+evalInt(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Int>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Int result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::Vec4f
+evalVec4f(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Vec4f>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Vec4f result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::Rgba
+evalRgba(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Rgba>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Rgba result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::Mat3f
+evalMat3f(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Mat3f>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Mat3f result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::Mat4f
+evalMat4f(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::Mat4f>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::Mat4f result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+scene_rdl2::rdl2::SceneObject*
+evalSceneObject(const rdl2::Shader* const obj,
+         const rdl2::AttributeKey<scene_rdl2::rdl2::SceneObject*>& valueKey,
+         shading::TLState *tls,
+         const State& state)
+{
+    scene_rdl2::rdl2::SceneObject* result = obj->get(valueKey);
+    const rdl2::SceneObject* mapObj = obj->getBinding(valueKey);
+    if (mapObj != nullptr) {
+        const rdl2::Map* map = mapObj->asA<rdl2::Map>();
+        map->sample(tls, state, &result);
+    }
+    return result;
+}
+
+
 } // namespace shading 
 } // namespace moonray
 

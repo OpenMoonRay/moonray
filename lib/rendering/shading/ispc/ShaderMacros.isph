@@ -1,4 +1,4 @@
-// Copyright 2023-2024 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 /// @file ShaderMacros.isph
@@ -78,6 +78,35 @@ struct Material;
         *color = sampleFnName(map, tls, *state);                            \
     }                                                                       \
     export void *uniform shaderName##_getSampleFastFunc() { return shaderName##_sampleFast; }
+
+/// @brief Define a map sample function within a shader
+/// for outputting a type other than Color.
+/// Use this to define a map shader that has only a non-derivative
+/// producing sample function.  Derivatives, if requested, will
+/// return 0.
+#define DEFINE_MAP_SHADER_WITH_TYPE(shaderName, sampleFnName, typeName)           \
+    void                                                                    \
+    shaderName##_sample(const uniform Map * uniform     map,         \
+                        uniform ShadingTLState * uniform    tls,         \
+                        const varying State * const uniform state,       \
+                        varying typeName * uniform                  color)       \
+    {                                                                       \
+        SHADING_START_CLOCK();                                              \
+        *color = sampleFnName(map, tls, *state);                            \
+        SHADING_END_CLOCK(map, tls, popcnt(lanemask()));                    \
+    }                                                                       \
+    export void *uniform shaderName##_getSampleFunc() { return shaderName##_sample; }   \
+                                                                            \
+    void                                                                    \
+    shaderName##_sampleFast(const uniform Map * uniform        map,     \
+                                  uniform ShadingTLState * uniform tls,     \
+                            const varying State * const uniform    state,   \
+                                  varying typeName * uniform               color)   \
+    {                                                                       \
+        *color = sampleFnName(map, tls, *state);                            \
+    }                                                                       \
+    export void *uniform shaderName##_getSampleFastFunc() { return shaderName##_sampleFast; }
+
 
 /// @brief Define a normal map sample function within a shader
 /// Use this to define a normal map shader that has only a non-derivative

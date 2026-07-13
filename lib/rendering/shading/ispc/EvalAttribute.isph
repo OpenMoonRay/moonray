@@ -16,12 +16,19 @@
 #include <scene_rdl2/common/math/ispc/asA.isph>
 #include <scene_rdl2/common/math/ispc/Col3.isph>
 #include <scene_rdl2/common/math/ispc/Color.isph>
+// TODO this Mat4 header needs to be included twice for things to work
+// and that is terribly wrong.
 #include <scene_rdl2/common/math/ispc/Mat4.isph>
 #include <scene_rdl2/common/math/ispc/ReferenceFrame.isph>
 #include <scene_rdl2/common/math/ispc/Vec2.isph>
 #include <scene_rdl2/common/math/ispc/Vec3.isph>
+#include <scene_rdl2/common/math/ispc/Vec4.isph>
+#include <scene_rdl2/common/math/ispc/Col4.isph>
+#include <scene_rdl2/common/math/ispc/Mat3.isph>
+#include <scene_rdl2/common/math/ispc/Mat4.isph>
 #include <scene_rdl2/scene/rdl2/rdl2.isph>
 #include <scene_rdl2/scene/rdl2/ISPCSupport.h>
+#include <scene_rdl2/common/platform/IspcUtil.isph>
 
 struct Displacement;
 struct Map;
@@ -42,8 +49,10 @@ varying bool  derefAndCastToVaryingBool( const uniform uint8_t *varying ptr);
 varying int   derefAndCastToVaryingInt(  const uniform uint8_t *varying ptr);
 varying float derefAndCastToVaryingFloat(const uniform uint8_t *varying ptr);
 varying Color derefAndCastToVaryingColor(const uniform uint8_t *varying ptr);
+varying Col4f derefAndCastToVaryingCol4f(const uniform uint8_t *varying ptr);
 varying Vec2f derefAndCastToVaryingVec2f(const uniform uint8_t *varying ptr);
 varying Vec3f derefAndCastToVaryingVec3f(const uniform uint8_t *varying ptr);
+varying Vec4f derefAndCastToVaryingVec4f(const uniform uint8_t *varying ptr);
 varying Mat4f derefAndCastToVaryingMat4f(const uniform uint8_t *varying ptr);
 
 /// map sample function pointer.  matches rdl2::SampleFuncv
@@ -289,6 +298,211 @@ getVec3f(const uniform Displacement  * uniform sceneObject,
 }
 /// @}
 
+
+/// @{
+/// @brief get an RDL float4 attribute as a Vec4f
+/// @note Use the attribute specific getAttrName() function instead if possible
+inline uniform Vec4f
+getVec4f(const uniform SceneObject   * uniform sceneObject,
+         const uniform Float4AttrKey * uniform keyIn)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+    AttributeKey * uniform key = (AttributeKey * uniform) keyIn;
+    uniform float * uniform ans =
+        (uniform float * uniform)(ctx.attributes + key->mOffset);
+
+    uniform Vec4f result = Vec4f_ctor(ans[0], ans[1], ans[2], ans[3]);
+    return result;
+}
+inline uniform Vec4f
+getVec4f(const uniform Material      * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getVec4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Vec4f
+getVec4f(const uniform Map           * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getVec4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Vec4f
+getVec4f(const uniform NormalMap     * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getVec4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Vec4f
+getVec4f(const uniform Displacement  * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getVec4f((const SceneObject * uniform) sceneObject, key);
+}
+
+/// @}
+
+/// @{
+/// @brief get an RDL float4 attribute as a Col4f
+/// @note Use the attribute specific getAttrName() function instead if possible
+inline uniform Col4f
+getCol4f(const uniform SceneObject   * uniform sceneObject,
+         const uniform Float4AttrKey * uniform keyIn)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+    AttributeKey * uniform key = (AttributeKey * uniform) keyIn;
+    uniform float * uniform ans =
+        (uniform float * uniform)(ctx.attributes + key->mOffset);
+
+    uniform Col4f result = Col4f_ctor(ans[0], ans[1], ans[2], ans[3]);
+    return result;
+}
+inline uniform Col4f
+getCol4f(const uniform Material      * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getCol4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Col4f
+getCol4f(const uniform Map           * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getCol4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Col4f
+getCol4f(const uniform NormalMap     * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getCol4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Col4f
+getCol4f(const uniform Displacement  * uniform sceneObject,
+         const uniform Float4AttrKey * uniform key)
+{
+    return getCol4f((const SceneObject * uniform) sceneObject, key);
+}
+/// @}
+
+/// @{
+/// @brief get an RDL Mat3f attribute as a Mat3f
+/// @note Use the attribute specific getAttrName() function instead if possible
+inline uniform Mat3f
+getMat3f(const uniform SceneObject   * uniform sceneObject,
+         const uniform Mat3fAttrKey * uniform keyIn)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject); 
+    AttributeKey * uniform key = (AttributeKey * uniform) keyIn;
+    uniform float * uniform ans =
+        (uniform float * uniform)(ctx.attributes + key->mOffset);
+
+    uniform Mat3f result = Mat3f_ctor(ans[0], ans[1], ans[2], ans[3], ans[4], ans[5], ans[6], ans[7], ans[8]);
+    return result;
+}
+inline uniform Mat3f
+getMat3f(const uniform Map           * uniform sceneObject,
+         const uniform Mat3fAttrKey * uniform key)
+{
+    return getMat3f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat3f
+getMat3f(const uniform Material     * uniform sceneObject,
+         const uniform Mat3fAttrKey * uniform key)
+{
+    return getMat3f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat3f
+getMat3f(const uniform Displacement * uniform sceneObject,
+         const uniform Mat3fAttrKey * uniform key)
+{
+    return getMat3f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat3f
+getMat3f(const uniform NormalMap    * uniform sceneObject,
+         const uniform Mat3fAttrKey * uniform key)
+{
+    return getMat3f((const SceneObject * uniform) sceneObject, key);
+}
+/// @}
+
+/// @{
+/// @brief get an RDL Mat4f attribute as a Mat4f
+/// @note Use the attribute specific getAttrName() function instead if possible
+inline uniform Mat4f
+getMat4f(const uniform SceneObject   * uniform sceneObject,
+         const uniform Mat4fAttrKey * uniform keyIn)
+{   
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject); 
+    AttributeKey * uniform key = (AttributeKey * uniform) keyIn;
+    uniform float * uniform ans =
+        (uniform float * uniform)(ctx.attributes + key->mOffset);
+    
+    uniform Mat4f result = Mat4f_ctor(ans[0],  ans[1],  ans[2],  ans[3],
+                                      ans[4],  ans[5],  ans[6],  ans[7],
+                                      ans[8],  ans[9],  ans[10], ans[11],
+                                      ans[12], ans[13], ans[14], ans[15]);
+    return result;
+}
+inline uniform Mat4f
+getMat4f(const uniform Map           * uniform sceneObject,
+         const uniform Mat4fAttrKey * uniform key)
+{   
+    return getMat4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat4f
+getMat4f(const uniform Material           * uniform sceneObject,
+         const uniform Mat4fAttrKey * uniform key)
+{
+    return getMat4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat4f
+getMat4f(const uniform Displacement       * uniform sceneObject,
+         const uniform Mat4fAttrKey * uniform key)
+{
+    return getMat4f((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform Mat4f
+getMat4f(const uniform NormalMap * uniform sceneObject,
+         const uniform Mat4fAttrKey * uniform key)
+{
+    return getMat4f((const SceneObject * uniform) sceneObject, key);
+}
+/// @}
+
+/// @{
+/// @brief get an RDL SceneObject* attribute
+/// @note Use the attribute specific getAttrName() function instead if possible
+inline uniform SceneObject* uniform
+getSceneObject(const uniform SceneObject   * uniform sceneObject,
+               const uniform SceneObjectAttrKey * uniform key)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+    return get(ctx.attributes, key);
+}
+inline uniform SceneObject* uniform
+getSceneObject(const uniform Map    * uniform sceneObject,
+        const uniform SceneObjectAttrKey * uniform key)
+{
+    return getSceneObject((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform SceneObject* uniform
+getSceneObject(const uniform Material    * uniform sceneObject,
+        const uniform SceneObjectAttrKey * uniform key)
+{
+    return getSceneObject((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform SceneObject* uniform
+getSceneObject(const uniform Displacement * uniform sceneObject,
+        const uniform SceneObjectAttrKey * uniform  key)
+{
+    return getSceneObject((const SceneObject * uniform) sceneObject, key);
+}
+inline uniform SceneObject* uniform
+getSceneObject(const uniform NormalMap * uniform sceneObject,
+        const uniform SceneObjectAttrKey * uniform  key)
+{
+    return getSceneObject((const SceneObject * uniform) sceneObject, key);
+}
+
+
 /// @brief evaluate a map binding
 /// @return false if no map binding, true if binding exists and
 /// was evaluated.  results returned in color.
@@ -418,7 +632,117 @@ evalColor(const uniform NormalMap *      uniform sceneObject,
 {
     return evalColor((const SceneObject * uniform) sceneObject, tls, state, keyIn);
 }
+inline Color
+evalColor(const uniform Displacement *       uniform sceneObject,
+                uniform ShadingTLState * uniform tls,
+          const varying State &                  state,
+          const uniform Float3AttrKey *  uniform keyIn)
+
+{
+    return evalColor((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
 /// @}
+
+///
+/// Start of Col4f eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvCol4f
+typedef void (* uniform SampleCol4fPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying Col4f *          uniform result);
+
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying Col4f *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleCol4fPtr sampleFn = (SampleCol4fPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief Evaluate a Col4f attribute
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying Col4f
+evalCol4f(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    // now evaluate and apply a map binding
+    varying Col4f binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getCol4f(sceneObject, keyIn);
+    }
+}
+inline Col4f
+evalCol4f(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    return evalCol4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Col4f
+evalCol4f(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    return evalCol4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Col4f
+evalCol4f(const uniform Displacement * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    return evalCol4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Col4f
+evalCol4f(const uniform NormalMap * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    return evalCol4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
 
 /// @{
 /// @brief Evaluate a color component
@@ -478,6 +802,210 @@ evalColorComponent(const uniform NormalMap *      uniform sceneObject,
 {
     return evalColorComponent((const SceneObject * uniform) sceneObject, tls,
                               state, showKeyIn, factorKeyIn, valueKeyIn);
+}
+/// @}
+
+///
+/// Start of Bool eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvBool
+typedef void (* uniform SampleBoolPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying bool *          uniform result);
+
+/// @brief evaluate a map binding
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying bool *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleBoolPtr sampleFn = (SampleBoolPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief evaluate a Bool attribute (potentially bound to a map shader)
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying bool
+evalBool(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform BoolAttrKey * uniform keyIn)
+{
+    // now evaluate and apply a map binding
+    varying bool binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getBool(sceneObject, keyIn);
+    }
+}
+inline bool
+evalBool(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform BoolAttrKey * uniform keyIn)
+{
+    return evalBool((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline bool
+evalBool(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform BoolAttrKey * uniform keyIn)
+{
+    return evalBool((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline bool
+evalBool(const uniform Displacement * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform BoolAttrKey * uniform keyIn)
+{
+    return evalBool((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline bool
+evalBool(const uniform NormalMap* uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform BoolAttrKey * uniform keyIn)
+{
+    return evalBool((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
+///
+/// Start of Int eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvInt
+typedef void (* uniform SampleIntPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying int *          uniform result);
+
+/// @brief evaluate a map binding
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying int *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleIntPtr sampleFn = (SampleIntPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief evaluate an Int attribute (potentially bound to a map shader)
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying int
+evalInt(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform IntAttrKey * uniform keyIn)
+{
+
+    // now evaluate and apply a map binding
+    varying int binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getInt(sceneObject, keyIn);
+    }
+}
+inline int
+evalInt(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform IntAttrKey * uniform keyIn)
+{
+    return evalInt((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline int
+evalInt(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform IntAttrKey * uniform keyIn)
+{
+    return evalInt((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline int
+evalInt(const uniform Displacement* uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform IntAttrKey * uniform keyIn)
+{
+    return evalInt((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+
+inline int
+evalInt(const uniform NormalMap* uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform IntAttrKey * uniform keyIn)
+{
+    return evalInt((const SceneObject * uniform) sceneObject, tls, state, keyIn);
 }
 /// @}
 
@@ -962,6 +1490,110 @@ evalVec3f(const uniform Displacement *   uniform sceneObject,
 }
 /// @}
 
+///
+/// Start of Vec4f eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvVec4f
+typedef void (* uniform SampleVec4fPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying Vec4f *          uniform result);
+
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying Vec4f *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleVec4fPtr sampleFn = (SampleVec4fPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief Evaluate a Vec4f attribute
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying Vec4f
+evalVec4f(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+
+    // now evaluate and apply a map binding
+    varying Vec4f binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getVec4f(sceneObject, keyIn);
+    }
+}
+inline Vec4f
+evalVec4f(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+
+{
+    return evalVec4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Vec4f
+evalVec4f(const uniform Material * uniform      sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+
+{
+    return evalVec4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Vec4f
+evalVec4f(const uniform Displacement * uniform  sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+
+{
+    return evalVec4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Vec4f
+evalVec4f(const uniform NormalMap * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Float4AttrKey * uniform keyIn)
+{
+    return evalVec4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
 /// @{
 /// @brief Evaluate a Vec2f attribute
 /// @note Use the attribute specific evalAttrName() function instead if possible
@@ -1014,7 +1646,320 @@ evalVec2f(const uniform NormalMap *      uniform sceneObject,
 {
     return evalVec2f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
 }
+inline Vec2f
+evalVec2f(const uniform Displacement *            uniform sceneObject,
+          uniform ShadingTLState * uniform tls,
+          const varying State &                  state,
+          const uniform Float2AttrKey *  uniform keyIn)
+
+{
+    return evalVec2f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
 /// @}
+
+///
+/// Start of Mat3f eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvMat3f
+typedef void (* uniform SampleMat3fPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying Mat3f *          uniform result);
+
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying Mat3f *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleMat3fPtr sampleFn = (SampleMat3fPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief Evaluate a Mat3f attribute
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying Mat3f
+evalMat3f(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat3fAttrKey * uniform keyIn)
+{
+    // now evaluate and apply a map binding
+    varying Mat3f binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getMat3f(sceneObject, keyIn);
+    }
+}
+inline Mat3f
+evalMat3f(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat3fAttrKey * uniform keyIn)
+{
+    return evalMat3f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat3f
+evalMat3f(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat3fAttrKey * uniform keyIn)
+{
+    return evalMat3f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat3f
+evalMat3f(const uniform Displacement * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat3fAttrKey * uniform keyIn)
+{
+    return evalMat3f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat3f
+evalMat3f(const uniform NormalMap * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat3fAttrKey * uniform keyIn)
+
+{
+    return evalMat3f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
+///
+/// Start of Mat4f eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncvMat4f
+typedef void (* uniform SampleMat4fPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        varying Mat4f *          uniform result);
+
+/// @brief evaluate a map binding
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     varying Mat4f *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleMat4fPtr sampleFn = (SampleMat4fPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief Evaluate a Mat4f attribute
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline varying Mat4f
+evalMat4f(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat4fAttrKey * uniform keyIn)
+{
+    // now evaluate and apply a map binding
+    varying Mat4f binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getMat4f(sceneObject, keyIn);
+    }
+}
+inline Mat4f
+evalMat4f(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat4fAttrKey * uniform keyIn)
+{
+    return evalMat4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat4f
+evalMat4f(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat4fAttrKey * uniform keyIn)
+
+{
+    return evalMat4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat4f
+evalMat4f(const uniform Displacement * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat4fAttrKey * uniform keyIn)
+{
+    return evalMat4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline Mat4f
+evalMat4f(const uniform NormalMap * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform Mat4fAttrKey * uniform keyIn)
+{
+    return evalMat4f((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
+///
+/// Start of SceneObject eval functions
+///
+
+/// map sample function pointer.  matches rdl2::SampleFuncv
+typedef void (* uniform SampleSceneObjectPtr)(const uniform Map *            uniform map,
+                                        uniform ShadingTLState * uniform tls,
+                                        const varying State *          uniform state,
+                                        uniform SceneObject* varying *          uniform result);
+
+/// @return false if no map binding, true if binding exists and
+/// was evaluated.  results returned in "result".
+inline uniform bool
+evalMapBinding(const uniform SceneObject *    uniform sceneObject,
+                     uniform ShadingTLState * uniform tls,
+               const varying State &                  state,
+               const uniform AttributeKey *   uniform key,
+                     uniform SceneObject* varying *          uniform result)
+{
+    uniform rdl2Ctx ctx = getRdl2Ctx((PTR8) sceneObject);
+
+    // within the bindings, get the pointer to the thing sceneObject/key is
+    // bound to.
+    int64 * uniform ptrToMapObjPtr = (int64 * uniform) (ctx.bindings + key->mIndex);
+
+    // deref to get the map object pointer
+    int64 * uniform mapObjPtr = (int64 * uniform) *ptrToMapObjPtr;
+
+    // if null, no binding
+    if (mapObjPtr == NULL) return false;
+
+    // we have a binding, find the sample function and evaluate it
+    int64 * uniform ptr =
+        (int64 * uniform) *(mapObjPtr + (MAP_SAMPLEFUNCV_OFFSET / 8));
+
+    // if the function pointer is null, no binding
+    if (ptr == NULL) return false;
+
+    // all good, call the sample function.
+    SampleSceneObjectPtr sampleFn = (SampleSceneObjectPtr) ptr;
+    const uniform int64 start = getInclusiveTime(mapObjPtr, tls);
+    sampleFn((const Map * uniform) mapObjPtr, tls, &state, result);
+    const uniform int64 end = getInclusiveTime(mapObjPtr, tls);
+    subtractTimeInChild(sceneObject, tls, start, end);
+    return true;
+}
+
+/// @{
+/// @brief Evaluate a SceneObject attribute
+/// @note Use the attribute specific evalAttrName() function instead if possible
+inline uniform SceneObject* varying
+evalSceneObject(const uniform SceneObject * uniform   sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform SceneObjectAttrKey * uniform keyIn)
+{
+    // now evaluate and apply a map binding
+    uniform SceneObject * varying binding;
+    if (evalMapBinding(sceneObject, tls, state, (const AttributeKey * uniform) keyIn,
+                       &binding)) {
+        return binding;
+    } else {
+        return getSceneObject(sceneObject, keyIn);
+    }
+}
+inline uniform SceneObject* varying
+evalSceneObject(const uniform Map * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform SceneObjectAttrKey * uniform keyIn)
+
+{
+    return evalSceneObject((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline uniform SceneObject* varying
+evalSceneObject(const uniform Material * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform SceneObjectAttrKey * uniform keyIn)
+{
+    return evalSceneObject((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline uniform SceneObject* varying
+evalSceneObject(const uniform Displacement * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform SceneObjectAttrKey * uniform keyIn)
+{
+    return evalSceneObject((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+inline uniform SceneObject* varying
+evalSceneObject(const uniform NormalMap * uniform       sceneObject,
+          uniform ShadingTLState * uniform      tls,
+          const varying State &                 state,
+          const uniform SceneObjectAttrKey * uniform keyIn)
+{
+    return evalSceneObject((const SceneObject * uniform) sceneObject, tls, state, keyIn);
+}
+/// @}
+
+
 
 /// @{
 /// @brief get a geom::Primitive bool attribute
@@ -1281,6 +2226,113 @@ getdColorAttributedy(   uniform ShadingTLState * uniform tls,
 }
 /// @}
 
+/// @{
+/// @brief get a geom::Primitive Col4f attribute
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Col4f
+getCol4fAttribute(      uniform ShadingTLState * uniform tls,
+                  const varying State &                  state,
+                  const uniform int                      key)
+{
+    MNRY_ASSERT(tls->mAttributeOffsets);
+    const uniform uint8_t *varying base = (const uniform uint8_t *varying)Address64_get(state.mData);
+    return derefAndCastToVaryingCol4f(base + tls->mAttributeOffsets[key]);
+}
+
+inline varying Col4f
+getCol4fAttribute(      uniform ShadingTLState * uniform tls,
+                  const varying State &                  state,
+                  const varying int                      key)
+{
+    MNRY_ASSERT(tls->mAttributeOffsets);
+    const uniform uint8_t *varying base = (const uniform uint8_t *varying)Address64_get(state.mData);
+    return derefAndCastToVaryingCol4f(base + tls->mAttributeOffsets[key]);
+}
+
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Col4f attribute derivatives with regards to
+///     s in surface st
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Col4f
+getdCol4fAttributeds(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    if (isdsProvided(state, key)) {
+        MNRY_ASSERT(tls->mAttributeOffsets);
+        const uniform uint8_t *varying base =
+            (const uniform uint8_t *varying)Address64_get(state.mData);
+        return derefAndCastToVaryingCol4f(
+            base + tls->mAttributeOffsets[key] + sizeof(uniform Col4f));
+    } else {
+        return Col4f_ctor(0.0f);
+    }
+}
+
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Col4f attribute derivatives with regards to
+///     t in surface st
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Col4f
+getdCol4fAttributedt(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    if (isdtProvided(state, key)) {
+        MNRY_ASSERT(tls->mAttributeOffsets);
+        const uniform uint8_t *varying base =
+            (const uniform uint8_t *varying)Address64_get(state.mData);
+        return derefAndCastToVaryingCol4f(
+            base + tls->mAttributeOffsets[key] + 2.0f * sizeof(uniform Col4f));
+    } else {
+        return Col4f_ctor(0.0f);
+    }
+}
+
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Col4f attribute derivatives with regards to
+///     x in pixel space xy
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Col4f
+getdCol4fAttributedx(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    return getdCol4fAttributeds(tls, state, key) * getdSdx(state) +
+           getdCol4fAttributedt(tls, state, key) * getdTdx(state);
+}
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Col4f attribute derivatives with regards to
+///     y in pixel space xy
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Col4f
+getdCol4fAttributedy(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    return getdCol4fAttributeds(tls, state, key) * getdSdy(state) +
+           getdCol4fAttributedt(tls, state, key) * getdTdy(state);
+}
+/// @}
+
 
 /// @{
 /// @brief get a geom::Primitive Vec2f attribute
@@ -1492,6 +2544,112 @@ getdVec3fAttributedy(   uniform ShadingTLState * uniform tls,
 {
     return getdVec3fAttributeds(tls, state, key) * getdSdy(state) +
            getdVec3fAttributedt(tls, state, key) * getdTdy(state);
+}
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Vec4f attribute
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Vec4f
+getVec4fAttribute(      uniform ShadingTLState * uniform tls,
+                  const varying State &                  state,
+                  const uniform int                      key)
+{
+    MNRY_ASSERT(tls->mAttributeOffsets);
+    const uniform uint8_t *varying base = (const uniform uint8_t *varying)Address64_get(state.mData);
+    return derefAndCastToVaryingVec4f(base + tls->mAttributeOffsets[key]);
+}
+
+inline varying Vec4f
+getVec4fAttribute(      uniform ShadingTLState * uniform tls,
+                  const varying State &state,
+                  const varying int key)
+{
+    MNRY_ASSERT(tls->mAttributeOffsets);
+    const uniform uint8_t *varying base = (const uniform uint8_t *varying)Address64_get(state.mData);
+    return derefAndCastToVaryingVec4f(base + tls->mAttributeOffsets[key]);
+}
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Vec4f attribute derivatives with regards to
+///     s in surface st
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Vec4f
+getdVec4fAttributeds(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    if (isdsProvided(state, key)) {
+        MNRY_ASSERT(tls->mAttributeOffsets);
+        const uniform uint8_t *varying base =
+            (const uniform uint8_t *varying)Address64_get(state.mData);
+        return derefAndCastToVaryingVec4f(
+            base + tls->mAttributeOffsets[key] + sizeof(uniform Vec4f));
+    } else {
+        return Vec4f_ctor(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+}
+
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Vec4f attribute derivatives with regards to
+///     t in surface st
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Vec4f
+getdVec4fAttributedt(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    if (isdtProvided(state, key)) {
+        MNRY_ASSERT(tls->mAttributeOffsets);
+        const uniform uint8_t *varying base =
+            (const uniform uint8_t *varying)Address64_get(state.mData);
+        return derefAndCastToVaryingVec4f(
+            base + tls->mAttributeOffsets[key] + 2.0f * sizeof(uniform Vec4f));
+    } else {
+        return Vec4f_ctor(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+}
+
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Vec4f attribute derivatives with regards to
+///     x in pixel space xy
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Vec4f
+getdVec4fAttributedx(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    return getdVec4fAttributeds(tls, state, key) * getdSdx(state) +
+           getdVec4fAttributedt(tls, state, key) * getdTdx(state);
+}
+/// @}
+
+/// @{
+/// @brief get a geom::Primitive Vec4f attribute derivatives with regards to
+///     y in pixel space xy
+/// @param tls
+/// @param state
+/// @param key The global attribute key index.
+inline varying Vec4f
+getdVec4fAttributedy(      uniform ShadingTLState * uniform tls,
+                     const varying State &                  state,
+                     const uniform int                      key)
+{
+    return getdVec4fAttributeds(tls, state, key) * getdSdy(state) +
+           getdVec4fAttributedt(tls, state, key) * getdTdy(state);
 }
 /// @}
 

@@ -1,0 +1,15 @@
+  <nodedef name="TestInputsMaterial" node="TestInputsMaterial" version="1.0" isdefaultversion="true">
+    <input name="select" type="string" default="Bool" uniform="true" />
+    <input name="inBool" type="boolean" default="false" />
+    <input name="inInt" type="integer" default="8421631" />
+    <input name="inString" type="string" default="1.0 0.5 0.5" />
+    <input name="inFloat" type="float" default="0.7" />
+    <input name="inVec2f" type="vector2" default="0.3, 0.3" />
+    <input name="inVec3f" type="vector3" default="0.7, 0.3, 0.9" />
+    <input name="inVec4f" type="vector4" default="0.7, 0.5, 0.5, 1.0" />
+    <input name="inColor" type="color3" default="1.0, 0.5, 0.5" />
+    <input name="inRgba" type="color4" default="1.0, 0.5, 0.5, 1.0" />
+    <input name="inMat3f" type="matrix33" default="1.0,0.0,0.0, 0.0,0.5,0.0, 0.0,0.0,0.5" />
+    <input name="inMat4f" type="matrix44" default="1.0,0.0,0.0,0.0, 0.0,0.5,0.0,0.0, 0.0,0.0,0.5,0.0, 0.0,0.0,0.0,1.0" />
+    <output name="out" type="surfaceshader" />
+  </nodedef>

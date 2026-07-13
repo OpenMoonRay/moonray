@@ -42,8 +42,12 @@ def IspcKeyType(rdl2Type):
         dataType += 'Float2AttrKeyISPC'
     elif rdl2Type == 'Vec3f' or rdl2Type == 'Rgb':
         dataType += 'Float3AttrKeyISPC'
-    elif rdl2Type == 'Vec4f' or rdl2Type == 'Rgba':
+    elif rdl2Type == 'Vec4f' or rdl2Type == 'Rgba' or rdl2Type == 'Color4':
         dataType += 'Float4AttrKeyISPC'
+    elif rdl2Type == 'Mat3f':
+        dataType += 'Mat3fAttrKeyISPC'
+    elif rdl2Type == 'Mat4f':
+        dataType += 'Mat4fAttrKeyISPC'
     else:
         dataType += 'UNKNOWN_ATTR_TYPE'
     return dataType
@@ -64,8 +68,16 @@ def IspcType(rdl2Type):
         shaderType += 'Vec2f'
     elif rdl2Type == 'Vec3f':
         shaderType += 'Vec3f'
+    elif rdl2Type == 'Vec4f':
+        shaderType += 'Vec4f'
     elif rdl2Type == 'Rgb':
         shaderType = 'Color'
+    elif rdl2Type == 'Rgba':
+        shaderType = 'Col4f'
+    elif rdl2Type == 'Mat3f':
+        shaderType = 'Mat3f'
+    elif rdl2Type == 'Mat4f':
+        shaderType = 'Mat4f'
     return shaderType
 
 def cap(name):

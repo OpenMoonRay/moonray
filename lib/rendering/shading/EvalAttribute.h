@@ -295,6 +295,48 @@ evalColorComponent(const scene_rdl2::rdl2::Shader* const obj,
                    shading::TLState *tls,
                    const State& state);
 
+scene_rdl2::rdl2::Bool
+evalBool(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Bool>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::Int
+evalInt(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Int>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::Vec4f
+evalVec4f(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Vec4f>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::Rgba
+evalRgba(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Rgba>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::Mat3f
+evalMat3f(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Mat3f>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::Mat4f
+evalMat4f(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Mat4f>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
+scene_rdl2::rdl2::SceneObject*
+evalSceneObject(const scene_rdl2::rdl2::Shader* const obj,
+          const scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::SceneObject*>& valueKey,
+          shading::TLState *tls,
+          const State& state);
+
 } // namespace shading 
 } // namespace moonray
 
