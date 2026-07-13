@@ -46,7 +46,7 @@ DistantLight_uvToLocal(const uniform DistantLight * uniform light,
     const varying float v1 = uv.y - 0.5f;
 
     const varying float z = -1.0f + light->mUvToLocalConst * (u1*u1 + v1*v1);
-    const varying float scale = -sqrt(light->mUvToLocalConst * (1.0f + z));
+    const varying float scale = -sqrt(light->mUvToLocalConst * (1.0f - z));
 
     const varying float x = u1 * scale;
     const varying float y = v1 * scale;
