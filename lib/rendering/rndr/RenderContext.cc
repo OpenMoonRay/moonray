@@ -693,8 +693,27 @@ RenderContext::checkGeometryChangesRequireReload()
     for (const auto& geomPair : changedGeoms) {
         scene_rdl2::rdl2::Geometry* geom = geomPair.first;
 
-        // Check if this geometry has attribute changes that require geometry reload
-        if (geom->attributeTreeChanged()) {
+        // A full reload is only required if a changed attribute actually needs
+        // the geometry to be regenerated/retessellated. Attributes are tagged
+        // to indicate when that is not necessary:
+        //   - FLAGS_CAN_SKIP_GEOM_RELOAD: change needs neither a reload nor a
+        //     BVH rebuild (e.g. ray_epsilon, a ray traversal tolerance).
+        //   - FLAGS_GEOM_RELOAD_BVH_ONLY: change needs a BVH rebuild but no
+        //     reload (e.g. the visibility flags, baked into the BVH ray mask).
+        // The BVH rebuild for the latter is handled by the normal incremental
+        // update path (the geometry stays in the changed-geometry list).
+        const scene_rdl2::rdl2::SceneClass& sceneClass = geom->getSceneClass();
+        for (auto attrIter = sceneClass.beginAttributes();
+             attrIter != sceneClass.endAttributes(); ++attrIter) {
+            const scene_rdl2::rdl2::Attribute* attribute = *attrIter;
+            if (!geom->hasChanged(attribute)) {
+                continue;
+            }
+            if (!attribute->updateRequiresGeomReload() ||
+                attribute->updateOnlyRequiresBVHRebuild()) {
+                continue;
+            }
+            // A reload-requiring attribute changed, so a reload is required.
             return true;
         }
     }
