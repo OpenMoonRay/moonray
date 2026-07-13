@@ -1336,7 +1336,7 @@ void populateLightStats(std::vector<LightStat>& lightStats, float& totalTime, fl
 
     avgTimePerLight = totalTime / numLights;
     avgEfficiency = totalEfficiency / numLights;
-    avgLightsChosen = static_cast<float>(numLightsChosen / static_cast<float>(totalPixelSamples));
+    avgLightsChosen = numLightsChosen / static_cast<float>(totalPixelSamples);
 }
 
 void RenderStats::logLightStats(const pbr::Statistics& pbrStats, const pbr::Scene* scene,
