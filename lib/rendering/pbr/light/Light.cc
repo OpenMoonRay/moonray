@@ -49,6 +49,7 @@ Light::Light(const scene_rdl2::rdl2::Light* rdlLight) :
     mOrientation{zero, zero},
     mDirection(zero),
     mRadiance(zero),
+    mTextureFallbackColor(sWhite),
     mDistribution(nullptr),
     mDistributionMapping(Distribution2D::Mapping::NONE),
     mLabelId(-1),
@@ -138,6 +139,7 @@ Light::updateImageMap(Distribution2D::Mapping distributionMapping)
 
     delete mDistribution;
     mDistribution = nullptr;
+    mTextureFallbackColor = sWhite;
 
     const std::string & mapFilename = mRdlLight->get(scene_rdl2::rdl2::Light::sTextureKey);
     if (mapFilename.empty()) {
@@ -161,7 +163,17 @@ Light::updateImageMap(Distribution2D::Mapping distributionMapping)
             mRdlLight->get(scene_rdl2::rdl2::Light::sTextureMirrorUKey),
             mRdlLight->get(scene_rdl2::rdl2::Light::sTextureMirrorVKey),
             mRdlLight->get(scene_rdl2::rdl2::Light::sTextureBorderColorKey));
-    } catch (scene_rdl2::except::KeyError &e) {
+    } catch (except::IoError &e) {
+        // The texture was specified but failed to load. Log the error and fall
+        // back to the fatal color (set on the SceneVariables), leaving
+        // mDistribution null so the light uses its own native untextured
+        // sampling scheme. This matches the ImageMap shader's behavior of
+        // substituting the fatal color for a missing texture.
+        mRdlLight->error(e.what());
+        mTextureFallbackColor = mRdlLight->getSceneClass().getSceneContext()->
+            getSceneVariables().get(scene_rdl2::rdl2::SceneVariables::sFatalColor);
+        return true;
+    } catch (except::KeyError &e) {
         mRdlLight->error(e.what());
     }
 

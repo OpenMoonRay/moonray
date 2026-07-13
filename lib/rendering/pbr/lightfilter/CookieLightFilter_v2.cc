@@ -41,6 +41,7 @@ HUD_VALIDATOR(CookieLightFilter_v2);
 
 CookieLightFilter_v2::CookieLightFilter_v2(const rdl2::LightFilter* rdlLightFilter) :
     LightFilter(rdlLightFilter),
+    mTextureFallbackColor(sWhite),
     mDistribution(nullptr)
 {
     if (mRdlLightFilter) {
@@ -307,9 +308,19 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
 
     std::string textureFilename = mRdlLightFilter->get<rdl2::String>(sTextureKey);
 
+    delete mDistribution;
+    mDistribution = nullptr;
+    mTextureFallbackColor = sWhite;
+
+    if (textureFilename.empty()) {
+        // No texture specified: leave mDistribution null. The eval() sites fall
+        // back to mTextureFallbackColor (white), so the filter passes light
+        // through unchanged.
+        return;
+    }
+
     try {
         rdl2::Rgb gamma = mRdlLightFilter->get<rdl2::Rgb>(sGammaKey);
-        delete mDistribution;
         mDistribution = new ImageDistribution(textureFilename, 
                                               Distribution2D::Mapping::PLANAR,
                                               gamma,
@@ -327,6 +338,14 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
                                               false,
                                               sWhite);
 
+    } catch (scene_rdl2::except::IoError &e) {
+        // The texture was specified but failed to load. Log the error and fall
+        // back to the fatal color (set on the SceneVariables), leaving
+        // mDistribution null so the eval() sites substitute the fatal color.
+        // This matches the untextured-fallback logic used by the lights.
+        mRdlLightFilter->error(e.what());
+        mTextureFallbackColor = mRdlLightFilter->getSceneClass().getSceneContext()->
+            getSceneVariables().get(rdl2::SceneVariables::sFatalColor);
     } catch (scene_rdl2::except::KeyError &e) {
         mRdlLightFilter->error(e.what());
     }
@@ -452,9 +471,14 @@ CookieLightFilter_v2::eval(const EvalData& data) const
         }
     }
 
-    // Lookup the map value using the displaced screen space position
-    Color mapValue = mDistribution->eval(st.x, st.y, 0,
-                         moonray::pbr::TextureFilterType::TEXTURE_FILTER_BILINEAR);
+    // Lookup the map value using the displaced screen space position. When the
+    // texture is missing, mDistribution is null and we fall back to the
+    // untextured color (white when unspecified, or the fatal color on a failed
+    // load), matching the untextured-fallback logic used by the lights.
+    Color mapValue = mDistribution ?
+        mDistribution->eval(st.x, st.y, 0,
+                         moonray::pbr::TextureFilterType::TEXTURE_FILTER_BILINEAR) :
+        mTextureFallbackColor;
 
     // Apply density scaling to allow partial light filtering
     mapValue = Color(1.f - mDensity) + mapValue * mDensity;

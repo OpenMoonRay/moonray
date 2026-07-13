@@ -145,9 +145,17 @@ CookieLightFilter_v2_eval(const uniform LightFilter * uniform lif,
         }
     }
 
-    *filterValue = ImageDistribution_eval(lf->mDistribution,
-                                          st.x, st.y, 0,
-                                          TEXTURE_FILTER_BILINEAR);
+    // Lookup the map value using the displaced screen space position. When the
+    // texture is missing, mDistribution is null and we fall back to the
+    // untextured color (white when unspecified, or the fatal color on a failed
+    // load), matching the untextured-fallback logic used by the lights.
+    if (lf->mDistribution != NULL) {
+        *filterValue = ImageDistribution_eval(lf->mDistribution,
+                                              st.x, st.y, 0,
+                                              TEXTURE_FILTER_BILINEAR);
+    } else {
+        *filterValue = lf->mTextureFallbackColor;
+    }
 
     filterValue->r = 1.f - lf->mDensity + filterValue->r * lf->mDensity;
     filterValue->g = 1.f - lf->mDensity + filterValue->g * lf->mDensity;

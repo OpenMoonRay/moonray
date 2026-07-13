@@ -107,6 +107,11 @@ enum LightSidednessType
                                                                             \
     HUD_MEMBER(HUD_NAMESPACE(scene_rdl2::math, Color), mRadiance);                      \
                                                                             \
+    /* Color used in place of the texture when a texture was specified but */ \
+    /* failed to load. Defaults to white (a no-op multiplier); set to the */ \
+    /* fatal color on load failure so the missing texture is visible. */    \
+    HUD_MEMBER(HUD_NAMESPACE(scene_rdl2::math, Color), mTextureFallbackColor); \
+                                                                            \
     /* TODO: this should be a shared resource */                            \
     HUD_PTR(ImageDistribution *, mDistribution);                            \
     HUD_CPP_MEMBER(Distribution2D::Mapping, mDistributionMapping, 4);       \
@@ -150,6 +155,7 @@ enum LightSidednessType
     HUD_VALIDATE(Light, mOrientation);                  \
     HUD_VALIDATE(Light, mDirection);                    \
     HUD_VALIDATE(Light, mRadiance);                     \
+    HUD_VALIDATE(Light, mTextureFallbackColor);         \
     HUD_VALIDATE(Light, mDistribution);                 \
     HUD_VALIDATE(Light, mDistributionMapping);          \
     HUD_VALIDATE(Light, mLabelId);                      \

@@ -428,6 +428,8 @@ SphereLight::eval(mcrt_common::ThreadLocalState* tls, const Vec3f &wi, const Vec
     if (mDistribution) {
         // Note: the distribution doesn't contribute to the pdf, since we ignore it when sampling
         radiance *= mDistribution->eval(isect.uv[0], isect.uv[1], 0, mTextureFilter);
+    } else {
+        radiance *= mTextureFallbackColor;
     }
 
     if (lightFilterList) {

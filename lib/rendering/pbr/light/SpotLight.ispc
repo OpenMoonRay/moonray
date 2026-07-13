@@ -314,7 +314,7 @@ SpotLight_eval_uniform(const uniform Light * uniform li, uniform ShadingTLState 
     // Apply texture if present
     Color radiance = light->mDistribution ? ImageDistribution_eval(light->mDistribution,
                                                 isect.uv.x, isect.uv.y, 0, light->mTextureFilter)
-                                          : sWhite;
+                                          : light->mTextureFallbackColor;
 
     // Apply spotlight falloff function at intersection with focal plane
     Vec2f normalizedFocalCoords;
