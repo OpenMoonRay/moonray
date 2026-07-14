@@ -674,11 +674,20 @@ VdbVolume::computeEmissionDistribution(const scene_rdl2::rdl2::VolumeShader* vol
     std::vector<float> values = getGridLuminance(mEmissionSampler,
                                                  *static_cast<const openvdb::VectorGrid*>(mEmissionGrid.get()));
 
-    return computeEmissionDistributionImpl(getRdlGeometry(),
-                                           *static_cast<const openvdb::VectorGrid*>(mEmissionGrid.get()),
-                                           mRenderToPrim,
-                                           values,
-                                           volumeShader);
+    auto result = computeEmissionDistributionImpl(getRdlGeometry(),
+                                                  *static_cast<const openvdb::VectorGrid*>(mEmissionGrid.get()),
+                                                  mRenderToPrim,
+                                                  values,
+                                                  volumeShader,
+                                                  scene_rdl2::math::clamp(
+                                                      getRdlGeometry()->get<scene_rdl2::rdl2::Float>("emission_sample_rate")));
+    if (!result) {
+        // The histogram could not be built (e.g. no finite positive emission, invalid
+        // bounds, oversize histogram, or allocation failure); fall back to the coarse
+        // bounding-box-based distribution.
+        return Primitive::computeEmissionDistribution(volumeShader);
+    }
+    return result;
 }
 
 const scene_rdl2::rdl2::Material *

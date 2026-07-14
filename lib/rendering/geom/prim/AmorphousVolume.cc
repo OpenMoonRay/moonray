@@ -85,6 +85,8 @@ AmorphousVolume::computeEmissionDistribution(const scene_rdl2::rdl2::VolumeShade
     MNRY_ASSERT_REQUIRE(emissionGrid->transform().isLinear());
 
     std::unique_ptr<EmissionDistribution> distribution;
+    const float emissionSampleRate = scene_rdl2::math::clamp(
+        getRdlGeometry()->get<scene_rdl2::rdl2::Float>("emission_sample_rate"));
 
     // TODO: fix the dual usage of VdbVolume's mPrimToRender matrices, then we can pass mPrimToRender into
     // computeEmissionDistributionImpl() in both the calls here. We can't at present because it may be being used to
@@ -98,7 +100,8 @@ AmorphousVolume::computeEmissionDistribution(const scene_rdl2::rdl2::VolumeShade
                                                        *static_cast<const amorphous::ScalarGridType*>(emissionGrid.get()),
                                                        mRenderToPrim,
                                                        values,
-                                                       volumeShader);
+                                                       volumeShader,
+                                                       emissionSampleRate);
 
     } else if (emissionGrid->isType<amorphous::RGBGridType>()) {
 
@@ -109,7 +112,14 @@ AmorphousVolume::computeEmissionDistribution(const scene_rdl2::rdl2::VolumeShade
                                                        *static_cast<const amorphous::RGBGridType*>(emissionGrid.get()),
                                                        mRenderToPrim,
                                                        values,
-                                                       volumeShader);
+                                                       volumeShader,
+                                                       emissionSampleRate);
+    }
+    if (!distribution) {
+        // The histogram could not be built (e.g. unhandled grid type, no finite positive
+        // emission, invalid bounds, oversize histogram, or allocation failure); fall back
+        // to the coarse bounding-box-based distribution.
+        return Primitive::computeEmissionDistribution(volumeShader);
     }
     return distribution;
 }
@@ -238,12 +248,9 @@ AmorphousVolume::initAmorphousSampler(const std::string& vdbFilePath,
                                       openvdb::VectorGrid::Ptr velocityGrid,
                                       const std::vector<int>& volumeIds)
 {
-    const float emissionSampleRate = scene_rdl2::math::clamp(mVdbVolumeData->mEmissionSampleRate);
-
     if (!mAmorphousSampler.initialize(vdbFilePath,
                                       densityGridName,
                                       rdlGeometry,
-                                      emissionSampleRate,
                                       volumeIds)) {
         return false;
     }

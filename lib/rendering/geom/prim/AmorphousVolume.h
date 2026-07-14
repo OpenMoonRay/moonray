@@ -105,7 +105,6 @@ protected:
         bool initialize(const std::string& vdbFilePath,
                         const std::string& densityGridName,
                         const scene_rdl2::rdl2::Geometry& rdlGeometry,
-                        const float emissionSampleRate,
                         const std::vector<int>& volumeIds)
         {
             amorphous::File vdbFile(vdbFilePath);
@@ -121,13 +120,6 @@ protected:
             }
 
             amorphous::SScatterParams& scatterParams = vdbFile.scatterParams();
-
-            // downsample emission grid
-            if (scatterParams.incandescenceGrid() != nullptr &&
-                !scatterParams.incandescenceGrid()->empty() &&
-                emissionSampleRate > 0.0f && emissionSampleRate < 1.0f) {
-                scatterParams.downsampleIncand(emissionSampleRate);
-            }
 
             return initialize(scatterParams, volumeIds, &rdlGeometry);
         }
