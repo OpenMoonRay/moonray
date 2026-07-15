@@ -204,7 +204,10 @@ drawBsdfSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * un
             float bsdfSample[2];
             getSample(bsdfSamples, bsdfSample, pv.nonMirrorDepth, *pbrTls->mFs);
 
-            LightFilterRandomValues lightFilterSample;
+            // Initialize to zero so we don't feed NaNs/garbage into the light
+            // filters when lightFilterNeedsSamples is false (matches the scalar
+            // path, see MOONRAY-4649).
+            LightFilterRandomValues lightFilterSample = { Vec2f_ctor(0.f, 0.f), Vec3f_ctor(0.f, 0.f, 0.f) };
             if (lightFilterNeedsSamples) {
                 getSample(lightFilterSamples, &lightFilterSample.r2.x, pv.nonMirrorDepth, *pbrTls->mFs);
                 getSample(lightFilterSamples3D, &lightFilterSample.r3.x, pv.nonMirrorDepth, *pbrTls->mFs);
@@ -529,7 +532,10 @@ drawLightSamples(uniform PbrTLState * uniform pbrTls, uniform ShadingTLState * u
         varying Vec3f lightSample;
         getSample(lightSamples, &lightSample.x, pv.nonMirrorDepth, *pbrTls->mFs);
 
-        varying LightFilterRandomValues lightFilterSample;
+        // Initialize to zero so we don't feed NaNs/garbage into the light
+        // filters when lightFilterNeedsSamples is false (matches the scalar
+        // path, see MOONRAY-4649).
+        varying LightFilterRandomValues lightFilterSample = { Vec2f_ctor(0.f, 0.f), Vec3f_ctor(0.f, 0.f, 0.f) };
         if (lightFilterNeedsSamples) {
             getSample(lightFilterSamples, &lightFilterSample.r2.x, pv.nonMirrorDepth, *pbrTls->mFs);
             getSample(lightFilterSamples3D, &lightFilterSample.r3.x, pv.nonMirrorDepth, *pbrTls->mFs);
