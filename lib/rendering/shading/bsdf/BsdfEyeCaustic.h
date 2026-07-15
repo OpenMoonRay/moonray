@@ -81,7 +81,7 @@ public:
         const float cosThetaO = dot(mN, slice.getWo());
         if (cosThetaO <= 0.0f) return scene_rdl2::math::sBlack;
 
-        const float eyeCausticBrdfCosThetaI = scene_rdl2::math::min(dot(mFrame.getN(), wi), scene_rdl2::math::sOneMinusEpsilon);
+        const float eyeCausticBrdfCosThetaI = dot(mFrame.getN(), wi);
         if (eyeCausticBrdfCosThetaI <= 0.0f)      return scene_rdl2::math::sBlack;
 
         // Normalization Factor from [1]
