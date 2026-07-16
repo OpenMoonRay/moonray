@@ -1480,6 +1480,7 @@ BsdfBuilder_addHairToonSpecularBRDF(
                              false,                  // isConductor
                              weight,
                              lobe);
+    lobe = handleIridescence(me, lobe, brdf.mIridescence);
 
     cif (isUnder(combineBehavior)) {
         // account for the non-dielectric lobes above
@@ -1583,6 +1584,7 @@ BsdfBuilder_addToonSpecularBRDF(
                               brdf.mIndirectReflectionsIntensity,
                               fresnel);
     BsdfLobe_setFresnel(lobe, fresnel);
+    lobe = handleIridescence(me, lobe, brdf.mIridescence);
 
     cif (isUnder(combineBehavior)) {
         // account for the non-dielectric lobes above

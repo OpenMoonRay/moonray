@@ -405,7 +405,8 @@ void ToonSpecularBRDF_init(
         const varying Vec3f& dPdt,
         const uniform bool enableIndirectReflections,
         const varying float indirectReflectionsIntensity,
-        const varying float indirectReflectionsRoughness);
+        const varying float indirectReflectionsRoughness,
+        const varying Iridescence * const uniform iridescence = NULL);
 
 void HairToonSpecularBRDF_init(
         varying HairToonSpecularBRDF& brdf,
@@ -425,7 +426,8 @@ void HairToonSpecularBRDF_init(
         const varying float* uniform rampValues,
         const uniform bool enableIndirectReflections,
         const varying float indirectReflectionsIntensity,
-        const varying float indirectReflectionsRoughness);
+        const varying float indirectReflectionsRoughness,
+        const varying Iridescence * const uniform iridescence = NULL);
 
 void LambertianBTDF_init(
         varying LambertianBTDF& btdf,
@@ -847,6 +849,7 @@ struct HairToonSpecularBRDF
     uniform bool mEnableIndirectReflections;
     varying float mIndirectReflectionsIntensity;
     varying float mIndirectReflectionsRoughness;
+    const varying Iridescence * uniform mIridescence;
 };
 
 
@@ -871,6 +874,7 @@ struct ToonSpecularBRDF
     uniform bool mEnableIndirectReflections;
     varying float mIndirectReflectionsIntensity;
     varying float mIndirectReflectionsRoughness;
+    const varying Iridescence * uniform mIridescence;
 };
 
 struct LambertianBRDF

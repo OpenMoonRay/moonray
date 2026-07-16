@@ -1576,7 +1576,9 @@ public:
                          const float* rampValues,
                          bool enableIndirectReflections,
                          float indirectReflectionsIntensity,
-                         float indirectReflectionsRoughness) :
+                         float indirectReflectionsRoughness,
+                         const Iridescence* const iridescence = nullptr) :
+        BsdfComponent(iridescence),
         mN(N),
         mHairDir(hairDir),
         mHairUV(hairUV),
@@ -1663,7 +1665,9 @@ public:
             const scene_rdl2::math::Vec3f& dPdt,
             bool enableIndirectReflections,
             float indirectReflectionsIntensity,
-            float indirectReflectionsRoughness) :
+            float indirectReflectionsRoughness,
+            const Iridescence* const iridescence = nullptr) :
+        BsdfComponent(iridescence),
         mN(N),
         mIntensity(intensity),
         mFresnelBlend(fresnelBlend),

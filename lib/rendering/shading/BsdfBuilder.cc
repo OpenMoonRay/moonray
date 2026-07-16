@@ -2012,6 +2012,7 @@ public:
                 component.getIndirectReflectionsIntensity(),
                 fresnel);
         lobe->setFresnel(fresnel);
+        lobe = handleIridescence(lobe, component.getIridescence());
 
         if (isUnder(combineBehavior)) {
             // account for the non-dielectric lobes above
@@ -2076,6 +2077,7 @@ public:
                                                  false, // is conductor
                                                  weight,
                                                  lobe);
+        lobe = handleIridescence(lobe, component.getIridescence());
 
         if (isUnder(combineBehavior)) {
             // account for the non-dielectric lobes above

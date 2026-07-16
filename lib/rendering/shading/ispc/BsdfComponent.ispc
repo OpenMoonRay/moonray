@@ -629,7 +629,8 @@ HairToonSpecularBRDF_init(
         const varying float* uniform rampValues,
         const uniform bool enableIndirectReflections,
         const varying float indirectReflectionsIntensity,
-        const varying float indirectReflectionsRoughness)
+        const varying float indirectReflectionsRoughness,
+        const varying Iridescence * const uniform iridescence)
 {
     me.mN = N;
     me.mHairDir = hairDir;
@@ -648,6 +649,7 @@ HairToonSpecularBRDF_init(
     me.mEnableIndirectReflections = enableIndirectReflections;
     me.mIndirectReflectionsIntensity = indirectReflectionsIntensity;
     me.mIndirectReflectionsRoughness = indirectReflectionsRoughness;
+    me.mIridescence = iridescence;
 }
 
 void
@@ -668,7 +670,8 @@ ToonSpecularBRDF_init(
         const varying Vec3f& dPdt,
         const uniform bool enableIndirectReflections,
         const varying float indirectReflectionsIntensity,
-        const varying float indirectReflectionsRoughness)
+        const varying float indirectReflectionsRoughness,
+        const varying Iridescence * const uniform iridescence)
 {
     me.mN = N;
     me.mIntensity = intensity;
@@ -686,6 +689,7 @@ ToonSpecularBRDF_init(
     me.mEnableIndirectReflections = enableIndirectReflections;
     me.mIndirectReflectionsIntensity = indirectReflectionsIntensity;
     me.mIndirectReflectionsRoughness = indirectReflectionsRoughness;
+    me.mIridescence = iridescence;
 }
 
 void
