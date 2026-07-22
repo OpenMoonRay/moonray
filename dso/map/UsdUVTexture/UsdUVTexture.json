@@ -94,6 +94,13 @@
                 "auto": "3"
             },
             "comment": "Flag indicating the color space in which the source texture is encoded.  If set to auto, gamma correction will be applied if the images is not single channel."
+        },
+        "attrSourceColorSpaceOverride": {
+            "name": "source_color_space",
+            "label": "source color space override",
+            "type": "String",
+            "default": "\"\"",
+            "comment": "Optional OCIO source color-space override. Empty preserves the USD sourceColorSpace enum. Use 'auto' to apply the active OCIO file rules, 'raw' or 'data' to disable source conversion, or an explicit color-space name from the active OCIO config. When OCIO conversion is active, the legacy gamma mode is bypassed."
         }
     }
 }

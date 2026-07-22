@@ -14,6 +14,8 @@
 #include <moonray/rendering/mcrt_common/ProfileAccumulatorHandles.h>
 #include <moonray/rendering/texturing/sampler/TextureSampler.h>
 
+#include <OpenColorIO/OpenColorIO.h>
+
 #ifdef __ARM_NEON__
 // This works around OIIO including x86 based headers due to detection of SSE
 // support due to sse2neon.h being included elsewhere
@@ -27,10 +29,13 @@
 #include <tbb/mutex.h>
 
 #include <algorithm>
+#include <cctype>
 #include <dirent.h>
 #include <glob.h>
 #include <memory>
 #include <vector>
+
+namespace OCIO = OCIO_NAMESPACE;
 
 namespace moonray {
 namespace shading {
@@ -117,6 +122,166 @@ getUdimFilenames(const std::string& filename,
 
 } // namespace
 
+namespace {
+
+std::string
+trim(std::string value)
+{
+    auto notSpace = [](unsigned char c) { return !std::isspace(c); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), notSpace));
+    value.erase(std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
+    return value;
+}
+
+std::string
+normalized(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) {
+                       if (c == '-' || c == ' ' || c == '.') return '_';
+                       return static_cast<char>(std::tolower(c));
+                   });
+    return value;
+}
+
+bool
+isRawColorSpace(const std::string& value)
+{
+    const std::string key = normalized(value);
+    return key.empty() || key == "raw" || key == "data" || key == "none";
+}
+
+std::string
+colorSpaceName(const OCIO::ConstColorSpaceRcPtr& colorSpace)
+{
+    if (!colorSpace) {
+        return {};
+    }
+    const char* name = colorSpace->getName();
+    return name ? std::string(name) : std::string();
+}
+
+std::string
+resolveColorSpace(const OCIO::ConstConfigRcPtr& config,
+                  const std::string& token)
+{
+    if (!config || token.empty()) {
+        return {};
+    }
+
+    try {
+        std::string name = colorSpaceName(config->getColorSpace(token.c_str()));
+        if (!name.empty()) {
+            return name;
+        }
+    } catch (const OCIO::Exception&) {
+    }
+    return {};
+}
+
+std::string
+roleColorSpace(const OCIO::ConstConfigRcPtr& config, const char* role)
+{
+    return resolveColorSpace(config, role ? role : "");
+}
+
+std::string
+renderingColorSpace(const OCIO::ConstConfigRcPtr& config)
+{
+    for (const char* role : {OCIO::ROLE_RENDERING,
+                             OCIO::ROLE_SCENE_LINEAR,
+                             "default_float",
+                             "reference",
+                             OCIO::ROLE_DEFAULT}) {
+        std::string name = roleColorSpace(config, role);
+        if (!name.empty()) {
+            return name;
+        }
+    }
+    return {};
+}
+
+std::string
+sourceColorSpaceForTexture(const OCIO::ConstConfigRcPtr& config,
+                           const std::string& filename,
+                           const std::string& authoredSource)
+{
+    std::string source = trim(authoredSource);
+    const std::string key = normalized(source);
+
+    if (isRawColorSpace(source)) {
+        return {};
+    }
+
+    if (key == "auto") {
+        if (!config) {
+            return {};
+        }
+        try {
+            const char* resolved = config->getColorSpaceFromFilepath(filename.c_str());
+            if (resolved && !isRawColorSpace(resolved)) {
+                return resolveColorSpace(config, resolved);
+            }
+        } catch (const OCIO::Exception&) {
+        }
+        return {};
+    }
+
+    if (config) {
+        std::string resolved = resolveColorSpace(config, source);
+        if (!resolved.empty() && !isRawColorSpace(resolved)) {
+            return resolved;
+        }
+    }
+    return {};
+}
+
+OCIO::ConstCPUProcessorRcPtr
+createTextureProcessor(const std::string& filename,
+                       const std::string& sourceColorSpace)
+{
+    OCIO::ConstConfigRcPtr config;
+    try {
+        config = OCIO::GetCurrentConfig();
+    } catch (const OCIO::Exception&) {
+        return {};
+    }
+
+    const std::string source = sourceColorSpaceForTexture(config, filename, sourceColorSpace);
+    if (source.empty()) {
+        return {};
+    }
+
+    const std::string target = renderingColorSpace(config);
+    if (target.empty() || source == target) {
+        return {};
+    }
+
+    try {
+        OCIO::ConstProcessorRcPtr processor =
+            config->getProcessor(source.c_str(), target.c_str());
+        return processor ? processor->getDefaultCPUProcessor() : OCIO::ConstCPUProcessorRcPtr();
+    } catch (const OCIO::Exception&) {
+    }
+    return {};
+}
+
+void
+applyOcioProcessor(intptr_t processorPtr, float* rgba)
+{
+    if (!processorPtr || !rgba) {
+        return;
+    }
+    const OCIO::CPUProcessor* processor =
+        reinterpret_cast<const OCIO::CPUProcessor*>(processorPtr);
+    try {
+        processor->applyRGB(rgba);
+    } catch (const OCIO::Exception&) {
+    }
+}
+
+} // namespace
+
 static ispc::UDIM_TEXTURE_StaticData sUdimTextureStaticData;
 
 class UdimTexture::Impl
@@ -195,6 +360,7 @@ public:
            scene_rdl2::rdl2::ShaderLogEventRegistry& logEventRegistry,
            const std::string &filename,
            ispc::TEXTURE_GammaMode gammaMode,
+           const std::string& sourceColorSpace,
            WrapType wrapS,
            WrapType wrapT,
            bool useDefaultColor,
@@ -203,6 +369,7 @@ public:
            std::string &errorMsg)
     {
         init();
+        mSourceColorSpace = sourceColorSpace;
 
         mIspc.mUseDefaultColor = useDefaultColor;
         mIspc.mDefaultColor.r = defaultColor.r;
@@ -211,6 +378,8 @@ public:
         mIspc.mFatalColor.r = fatalColor.r;
         mIspc.mFatalColor.g = fatalColor.g;
         mIspc.mFatalColor.b = fatalColor.b;
+        mIspc.mOcioProcessor = 0;
+        mOcioProcessor.reset();
 
         std::vector<std::string> udimFilenames;
         if (!getUdimFilenames(filename, udimFilenames)) {
@@ -276,6 +445,11 @@ public:
         }
         mIspc.mApplyGamma = applyGamma;
         mIspc.mIs8bit = mIs8bit;
+        mOcioProcessor = createTextureProcessor(filename, mSourceColorSpace);
+        mIspc.mOcioProcessor = reinterpret_cast<intptr_t>(mOcioProcessor.get());
+        if (mOcioProcessor) {
+            mIspc.mApplyGamma = false;
+        }
 
         tbb::mutex errorMutex;
 
@@ -366,6 +540,7 @@ public:
                 tmp[2] = tmp[2] > 0.0f ? powf(tmp[2], 2.2f) : 0.0f;
                 // don't gamma the alpha channel
             }
+            applyOcioProcessor(mIspc.mOcioProcessor, tmp);
             result[0] = tmp[0];
             result[1] = tmp[1];
             result[2] = tmp[2];
@@ -396,7 +571,9 @@ public:
 
         mIspc.mApplyGamma = false;
         mIspc.mIs8bit = false;
+        mIspc.mOcioProcessor = 0;
         mIspc.mIsValid = false;
+        mOcioProcessor.reset();
     }
 
     bool
@@ -592,6 +769,8 @@ private:
     std::vector<texture::TextureHandle*> mTextureHandles;
     texture::TextureOptions mTextureOpt[QualityCount];
     std::vector<std::unique_ptr<texture::TextureOptions>> mTextureOptions;
+    OCIO::ConstCPUProcessorRcPtr mOcioProcessor;
+    std::string mSourceColorSpace;
     std::vector<int> mTextureHandleIndices;
     int mNumTextures;
     std::vector<int> mWidths;
@@ -631,6 +810,7 @@ UdimTexture::update(scene_rdl2::rdl2::Shader *shader,
                     scene_rdl2::rdl2::ShaderLogEventRegistry& logEventRegistry,
                     const std::string &filename,
                     ispc::TEXTURE_GammaMode gammaMode,
+                    const std::string& sourceColorSpace,
                     WrapType wrapS,
                     WrapType wrapT,
                     bool useDefaultColor,
@@ -642,6 +822,7 @@ UdimTexture::update(scene_rdl2::rdl2::Shader *shader,
                          logEventRegistry,
                          filename,
                          gammaMode,
+                         sourceColorSpace,
                          wrapS,
                          wrapT,
                          useDefaultColor,
@@ -770,6 +951,7 @@ void CPP_oiioUdimTexture(const ispc::UDIM_TEXTURE_Data *tx,
             result[2] = result[2] > 0.0f ? powf(result[2], 2.2f) : 0.0f;
             // don't gamma the alpha channel
         }
+        applyOcioProcessor(tx->mOcioProcessor, result);
     } else {
         scene_rdl2::rdl2::Shader::getLogEventRegistry().log(shader, tx->mErrorSampleFail);
         result[0] = result[1] = result[2] = result[3] = 0.f;

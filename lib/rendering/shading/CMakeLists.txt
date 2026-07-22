@@ -5,6 +5,8 @@ add_subdirectory(ispc)
 
 set(component rendering_shading)
 
+find_package(OpenColorIO REQUIRED)
+
 set(installIncludeDir ${PACKAGE_NAME}/rendering/shading)
 set(exportGroup ${PROJECT_NAME}Targets)
 
@@ -116,6 +118,7 @@ target_link_libraries(${component}
         ${PROJECT_NAME}::shading_eval_ispc
         ${PROJECT_NAME}::shading_ispc
         ${PROJECT_NAME}::texturing_sampler
+        OpenColorIO::OpenColorIO
         SceneRdl2::scene_rdl2
 )
 

@@ -21,6 +21,28 @@ static ispc::StaticUsdUVTextureData sStaticUsdUVTextureData;
 
 //----------------------------------------------------------------------------
 
+namespace {
+
+std::string
+sourceColorSpaceFromUsdEnum(const int sourceColorSpace, const std::string& overrideValue)
+{
+    if (!overrideValue.empty()) {
+        return overrideValue;
+    }
+
+    switch (sourceColorSpace) {
+    case ispc::TEXTURE_GAMMA_OFF:
+        return "raw";
+    case ispc::TEXTURE_GAMMA_ON:
+        return "sRGB";
+    case ispc::TEXTURE_GAMMA_USD:
+    default:
+        return "auto";
+    }
+}
+
+} // namespace
+
 RDL2_DSO_CLASS_BEGIN(UsdUVTexture, scene_rdl2::rdl2::Map)
 
 public:
@@ -73,6 +95,9 @@ UsdUVTexture::update()
     const std::string filename = get(attrFile);
     const std::size_t udimPos = filename.find("<UDIM>");
     const bool areWeAUdim = udimPos != std::string::npos;
+    const std::string sourceColorSpace =
+        sourceColorSpaceFromUsdEnum(get(attrSourceColorSpace),
+                                    get(attrSourceColorSpaceOverride));
 
     const scene_rdl2::rdl2::SceneVariables &sv = getSceneClass().getSceneContext()->getSceneVariables();
     mIspc.mFatalColor = asIspc(sv.get(scene_rdl2::rdl2::SceneVariables::sFatalColor));
@@ -103,6 +128,8 @@ UsdUVTexture::update()
 
         if (needsUpdate ||
             hasChanged(attrFile) ||
+            hasChanged(attrSourceColorSpace) ||
+            hasChanged(attrSourceColorSpaceOverride) ||
             hasChanged(attrWrapS) ||
             hasChanged(attrWrapT) ||
             hasChanged(attrFallback)) {
@@ -111,6 +138,7 @@ UsdUVTexture::update()
                                       sLogEventRegistry,
                                       filename,
                                       static_cast<ispc::TEXTURE_GammaMode>(get(attrSourceColorSpace)),
+                                      sourceColorSpace,
                                       wrapS,
                                       wrapT,
                                       true, // use default/fallback color
@@ -135,12 +163,15 @@ UsdUVTexture::update()
         }
         if (needsUpdate ||
             hasChanged(attrFile) ||
+            hasChanged(attrSourceColorSpace) ||
+            hasChanged(attrSourceColorSpaceOverride) ||
             hasChanged(attrWrapS) ||
             hasChanged(attrWrapT) ||
             hasChanged(attrFallback)) {
 
             if (!mTexture->update(filename,
                                   static_cast<ispc::TEXTURE_GammaMode>(get(attrSourceColorSpace)),
+                                  sourceColorSpace,
                                   wrapS,
                                   wrapT,
                                   true, // use default/fallback color
@@ -242,4 +273,3 @@ UsdUVTexture::sample(const scene_rdl2::rdl2::Map *self,
     rgb = rgb * me->get(attrScale) + me->get(attrBias);
     *sample = rgb;
 }
-
