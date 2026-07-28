@@ -1688,13 +1688,10 @@ BsdfBuilder_addLambertianBTDF(
                          btdf.mTint,
                          false); // true for reflection, false for transmission
 
-    if (me.mPreventLightCulling) {
-        // Force lobe to be "spherical" to prevent light culling
-        // when light sample is on backside
-        const uniform BsdfLobeType lobeType = BSDF_LOBE_TYPE_ALL_DIFFUSE;
-        BsdfLobe_setType(lobe, lobeType);
-        BsdfLobe_setIsSpherical(lobe, true);
-    }
+    // Note: preventLightCulling is intentionally NOT applied to BTDF lobes.
+    // A diffuse transmission lobe uses a negated normal to sample the back
+    // hemisphere. Overriding its type to ALL_DIFFUSE would cause it to appear
+    // as a reflection lobe, breaking normal AOV computations.
 
     varying Color scale = Color_ctor(weight);
 
