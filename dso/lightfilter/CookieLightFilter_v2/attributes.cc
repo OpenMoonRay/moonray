@@ -39,8 +39,13 @@ RDL2_DSO_ATTR_DEFINE(rdl2::LightFilter)
     attrProjectorType = sceneClass.declareAttribute<rdl2::Int>("projector_type", 0, rdl2::FLAGS_ENUMERABLE);
     sceneClass.setEnumValue(attrProjectorType, 0, "perspective");
     sceneClass.setEnumValue(attrProjectorType, 1, "orthographic");
+    sceneClass.setEnumValue(attrProjectorType, 2, "spherical_latlong");
     sceneClass.setMetadata(attrProjectorType, "comment", 
-        "Perspective or orthographic projection");
+        "Perspective or orthographic planar projection, or a spherical latlong "
+        "(equirectangular) projection that wraps the texture around the projector "
+        "in all directions.  Spherical mode ignores the projector focal length, "
+        "film width and pixel aspect ratio, and applies even when a projector "
+        "camera is attached (only the projector's transform is used).");
 
     attrProjectorFocalKey = sceneClass.declareAttribute<rdl2::Float>("projector_focal", 30.0f);
     sceneClass.setMetadata(attrProjectorFocalKey, "comment", 
@@ -70,19 +75,19 @@ RDL2_DSO_ATTR_DEFINE(rdl2::LightFilter)
     // uv space, and 0.1 is a very large filter radius.  Anything larger is not
     // useful and would be confusing for the user.
     sceneClass.setMetadata(attrBlurNearValue, "comment", 
-        "Blur filter radius (in texture UV space) at the near distance");
+        "Blur filter radius (in texture UV space for planar, or radians for spherical) at the near distance");
 
     attrBlurMidValue = sceneClass.declareAttribute<rdl2::Float>("blur_mid_value", 0.0f);
     sceneClass.setMetadata(attrBlurMidValue, "min", "0.0");
     sceneClass.setMetadata(attrBlurMidValue, "max", "0.1");
     sceneClass.setMetadata(attrBlurMidValue, "comment", 
-        "Blur filter radius (in texture UV space) at the mid distance");
+        "Blur filter radius (in texture UV space for planar, or radians for spherical) at the mid distance");
 
     attrBlurFarValue = sceneClass.declareAttribute<rdl2::Float>("blur_far_value", 0.0f);
     sceneClass.setMetadata(attrBlurFarValue, "min", "0.0");
     sceneClass.setMetadata(attrBlurFarValue, "max", "0.1");
     sceneClass.setMetadata(attrBlurFarValue, "comment", 
-        "Blur filter radius (in texture UV space) at the far distance");
+        "Blur filter radius (in texture UV space for planar, or radians for spherical) at the far distance");
 
     attrBlurType = sceneClass.declareAttribute<rdl2::Int>("blur_type", 0, rdl2::FLAGS_ENUMERABLE);
     sceneClass.setEnumValue(attrBlurType, 0, "gaussian");
