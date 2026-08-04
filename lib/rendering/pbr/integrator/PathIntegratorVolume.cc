@@ -1800,13 +1800,39 @@ PathIntegrator::computeEmissiveVolumeIntegralSubInterval(pbr::TLState *pbrTls,
 
         float u;
         trSamples.getSample(&u, 0);
-        float tStart = t0;
+        float tLeft = t0;   // left boundary of the current sub-interval
         float stepSize = minFeatureSize * mInvVolumeQuality * scene_rdl2::math::max(depth - 1, 1);
-        float t = t0 + stepSize * u;
-        while (t < t1) {
-            if (luminance(transmittance) < mVolumeTransmittanceThreshold) {
-                reachTransmittanceThreshold = true;
-                return LVe;
+        // For large emissive volumes the emission integral can accumulate
+        // thousands of steps per sub-interval.  Cap the step count so each
+        // sub-interval takes at most sMaxEmissionIntegralSteps iterations,
+        // adjusting stepSize when the cap is hit.  Computing t from the step
+        // index rather than accumulating (t += stepSize) eliminates rounding
+        // error buildup that could otherwise cause the step count to be
+        // considerably off-target (MOONRAY-5781).
+        // The loop runs numSteps full-sized steps then one final partial step
+        // that brings t exactly to t1.  The transmittance threshold early-exit
+        // is skipped for that last step so the integral is always completed to
+        // the interval boundary.
+        static constexpr int sMaxEmissionIntegralSteps = 1024;
+        int numSteps = static_cast<int>((t1 - t0) / stepSize);
+        if (numSteps > sMaxEmissionIntegralSteps) {
+            numSteps = sMaxEmissionIntegralSteps;
+            stepSize = (t1 - t0) / static_cast<float>(sMaxEmissionIntegralSteps);
+        }
+        for (int stepCount = 0; stepCount <= numSteps; ++stepCount) {
+            // Full steps derive t from the index to avoid rounding buildup;
+            // the final partial step samples at t1 exactly.
+            const bool isFinalStep = (stepCount == numSteps);
+            const float t = isFinalStep
+                            ? t1
+                            : t0 + stepSize * (u + static_cast<float>(stepCount));
+            const float delta = t - tLeft;
+            if (delta < scene_rdl2::math::sEpsilon) break;  // zero-length or overshoot guard
+            if (!isFinalStep) {
+                if (luminance(transmittance) < mVolumeTransmittanceThreshold) {
+                    reachTransmittanceThreshold = true;
+                    return LVe;
+                }
             }
             float rndVal = 0.f;
             if (mVolumeOverlapMode == VolumeOverlapMode::RND) {
@@ -1814,7 +1840,6 @@ PathIntegrator::computeEmissiveVolumeIntegralSubInterval(pbr::TLState *pbrTls,
             }
             scene_rdl2::math::Color sigmaT = evalSigmaT(pbrTls, trVolumeRegionsCount, trVolumeIds,
                 mVolumeOverlapMode, rndVal, volumeSampleInfo, t, time, nullptr, -1);
-            float delta = t - tStart;
             if (sampleEmission) {
                 const geom::internal::VolumeSampleInfo& sampleInfo =
                     volumeSampleInfo[emissiveVolumeId];
@@ -1834,42 +1859,11 @@ PathIntegrator::computeEmissiveVolumeIntegralSubInterval(pbr::TLState *pbrTls,
                 LVe += transmittance * emission * delta;
             }
             transmittance *= exp(-sigmaT * delta);
-            tStart = t;
-            t += stepSize;
+            tLeft = t;
         }
         if (luminance(transmittance) < mVolumeTransmittanceThreshold) {
             reachTransmittanceThreshold = true;
             return LVe;
-        }
-        // last step
-        if ((t - t1) > scene_rdl2::math::sEpsilon) {
-            float rndVal = 0.f;
-            if (mVolumeOverlapMode == VolumeOverlapMode::RND) {
-                trSamples2.getSample(&rndVal, 0);
-            }
-
-            scene_rdl2::math::Color sigmaT = evalSigmaT(pbrTls, trVolumeRegionsCount, trVolumeIds,
-                mVolumeOverlapMode, rndVal, volumeSampleInfo, t1, time, nullptr, -1);
-            float delta = t1 - tStart;
-            if (sampleEmission) {
-                const geom::internal::VolumeSampleInfo& sampleInfo =
-                    volumeSampleInfo[emissiveVolumeId];
-                const scene_rdl2::rdl2::VolumeShader* volumeShader = sampleInfo.getShader();
-
-                shading::Intersection isect;
-                const geom::internal::Primitive* prim = volumeRayState.getCurrentVolumeRegions().getPrimitive(emissiveVolumeId);
-                isect.init(prim->getRdlGeometry());
-                const scene_rdl2::math::Vec3f p = sampleInfo.getSamplePosition(t1);
-                const scene_rdl2::math::Vec3f evalP = prim->evalVolumeSamplePosition(tls, emissiveVolumeId, p, time);
-                isect.setP(prim->transformVolumeSamplePosition(evalP, time));
-                const shading::State state(&isect);
-
-                scene_rdl2::math::Color emission = volumeShader->emission(
-                    shadingTls, state,
-                    prim->evalTemperature(tls, emissiveVolumeId, evalP));
-                LVe += transmittance * emission * delta;
-            }
-            transmittance *= exp(-sigmaT * delta);
         }
     }
     return LVe;
@@ -2556,10 +2550,24 @@ PathIntegrator::transmittanceSubinterval(pbr::TLState *pbrTls,
         float u;
         trSamples.getSample(&u, 0);
         float stepSize = minFeatureSize * mInvVolumeShadowQuality * scene_rdl2::math::max(depth - 1, 1);
-        float t = t0 + stepSize * u;
+        // Guard against a degenerate step size. When a fine-featured volume is
+        // intersected far along a ray (large t0), stepSize can be below the
+        // floating point resolution of t, so that (t += stepSize) never advances
+        // t and this loop spins forever (MOONRAY-5781).  Compute the number of
+        // steps explicitly and derive t from the step index each iteration,
+        // which eliminates accumulated rounding error entirely.
+        static constexpr int sMaxMarchingSteps = 100000;
+        int numSteps = static_cast<int>((t1 - t0) / stepSize);
+        if (numSteps > sMaxMarchingSteps) {
+            numSteps = sMaxMarchingSteps;
+            stepSize = (t1 - t0) / static_cast<float>(sMaxMarchingSteps);
+        }
+        const float tJitter = t0 + stepSize * u;
         scene_rdl2::math::Color tau(0.0f);
 
-        while (t < t1) {
+        for (int stepCount = 0; stepCount < numSteps; ++stepCount) {
+            const float t = tJitter + static_cast<float>(stepCount) * stepSize;
+            if (t >= t1) break;
             float rndVal = 0.f;
             if (mVolumeOverlapMode == VolumeOverlapMode::RND) {
                 trSamples.getSample(&rndVal, 0);
@@ -2570,7 +2578,6 @@ PathIntegrator::transmittanceSubinterval(pbr::TLState *pbrTls,
             if (luminance(tau * stepSize * scaleFactor) > tauThreshold) {
                 return scene_rdl2::math::Color(0.0f);
             }
-            t += stepSize;
         }
         // the estimator for integrate optical thickness from t0 to t1 is
         // (1 / N) * (sum(sigmaT(Pi) / pdf(Pi))) where pdf(Pi) = 1 / (t1 - t0)
