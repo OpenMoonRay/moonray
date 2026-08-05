@@ -2563,6 +2563,16 @@ PathIntegrator::transmittanceSubinterval(pbr::TLState *pbrTls,
             stepSize = (t1 - t0) / static_cast<float>(sMaxMarchingSteps);
         }
         const float tJitter = t0 + stepSize * u;
+        // The jitter shifts the whole sample sequence: when the last sample
+        // position (tJitter + numSteps*stepSize) still falls inside [t0, t1),
+        // we can fit one additional sample.  Without this correction the loop
+        // uses floor(N) samples, but the original while-loop used ceil(N-u)
+        // which is floor(N)+1 when u < frac(N).  The missing sample causes an
+        // under-estimate of tau, raising transmittance and brightening the image.
+        if (numSteps < sMaxMarchingSteps &&
+            tJitter + static_cast<float>(numSteps) * stepSize < t1) {
+            ++numSteps;
+        }
         scene_rdl2::math::Color tau(0.0f);
 
         for (int stepCount = 0; stepCount < numSteps; ++stepCount) {
