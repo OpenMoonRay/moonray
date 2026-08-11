@@ -1398,7 +1398,8 @@ BsdfBuilder_addToonBRDF(
                       brdf.mRampPositions,
                       brdf.mRampInterpolators,
                       brdf.mRampColors,
-                      brdf.mExtendRamp);
+                      brdf.mExtendRamp,
+                      brdf.mVersion);
 
     if (me.mPreventLightCulling) {
         // Force lobe to be "spherical" to prevent culling

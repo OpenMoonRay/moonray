@@ -418,12 +418,15 @@ ToonBsdfLobe::eval(const BsdfSlice &slice,
     // Soften hard shadow terminator due to shading normals
     const float Gs = slice.computeShadowTerminatorFix(N, wi);
 
-    // We use the upper bound of 1/2pi as the normalization factor
+    // We use the upper bound of 1/pi as the normalization factor
     // for the maximum possible toon step function
     // TODO: a more accurate normalization factor for the varying
     // step can be computed if so desired.
+    // Legacy "ramp" model used 1/(2*pi) due to a bug; "ramp_v2" uses the
+    // corrected 1/pi (MOONSHINE-2051).
+    const float norm = (mVersion == 1) ? sOneOverTwoPi : sOneOverPi;
     Color result = Gs * albedo *
-                   computeScaleAndFresnel(cosThetaWo) * sOneOverTwoPi;
+                   computeScaleAndFresnel(cosThetaWo) * norm;
     return result;
 }
 

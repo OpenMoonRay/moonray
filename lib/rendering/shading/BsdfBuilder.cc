@@ -1917,7 +1917,8 @@ public:
             component.getRampPositions(),
             component.getRampInterpolators(),
             component.getRampColors(),
-            component.getExtendRamp());
+            component.getExtendRamp(),
+            component.getVersion());
 
         if (mPreventLightCulling) {
             // Force lobe to be "spherical" to prevent culling

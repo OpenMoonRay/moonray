@@ -596,6 +596,7 @@ ToonBRDF_init(
         const varying RampInterpolatorMode* uniform rampInterpolators,
         const varying Color* uniform rampColors,
         const varying bool extendRamp,
+        const varying int version,
         const varying Iridescence * const uniform iridescence)
 {
     me.mN           = N;
@@ -606,6 +607,7 @@ ToonBRDF_init(
     me.mRampInterpolators = rampInterpolators;
     me.mRampColors = rampColors;
     me.mExtendRamp = extendRamp;
+    me.mVersion = version;
 
     me.mIridescence = iridescence;
 }

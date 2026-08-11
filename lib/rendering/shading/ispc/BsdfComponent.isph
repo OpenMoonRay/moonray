@@ -386,6 +386,7 @@ void ToonBRDF_init(
         const varying RampInterpolatorMode* uniform rampInterpolators,
         const varying Color* uniform rampColors,
         const varying bool extendRamp,
+        const varying int version = 1,
         const varying Iridescence * const uniform iridescence = NULL);
 
 void ToonSpecularBRDF_init(
@@ -819,6 +820,7 @@ struct ToonBRDF
     const varying RampInterpolatorMode* uniform mRampInterpolators;
     const varying Color* uniform mRampColors;
     varying bool mExtendRamp;
+    varying int mVersion;  // 1 = legacy 1/(2*pi) norm ("ramp"), 2 = fixed 1/pi norm ("ramp_v2")
 
     const varying Iridescence * uniform mIridescence;
 };
