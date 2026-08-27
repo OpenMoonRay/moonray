@@ -262,10 +262,12 @@ LineSegments::postIntersect(mcrt_common::ThreadLocalState &tls,
 
     const scene_rdl2::rdl2::Geometry* geometry = intersection.getGeometryObject();
     MNRY_ASSERT(geometry != nullptr);
-    if (geometry->getRayEpsilon() <= 0.0f) {
-        // Use the 1.5 times the curve radius as the next ray epsilon hint.
+    if (mSubType == SubType::RAY_FACING && geometry->getRayEpsilon() <= 0.0f) {
+        // Use 1.5 times the curve radius as the next ray epsilon hint.
         // This lets shadow and continuation rays escape
-        // the intersected hair, instead of self-intersecting.
+        // the intersected hair, instead of self-intersecting. This only applies
+        // to RAY_FACING curves because they are flat ribbons that pivot to face the ray.
+        // Real geometries should use the default ray epsilon.
         float curveRadius = cv[0].w * (1.0f - ray.u) + cv[1].w * ray.u;
         intersection.setEpsilonHint(1.5f * curveRadius);
     } else {
