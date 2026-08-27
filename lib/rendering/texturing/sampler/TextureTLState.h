@@ -6,17 +6,6 @@
 #include "TextureTLState.hh"
 #include <moonray/rendering/mcrt_common/ThreadLocalState.h>
 
-//  OiiO includes for access to texture system.
-#ifdef __ARM_NEON__
-// This works around OIIO including x86 based headers due to detection of SSE
-// support due to sse2neon.h being included elsewhere
-#define __IMMINTRIN_H
-#define __NMMINTRIN_H
-#define OIIO_NO_SSE 1
-#define OIIO_NO_AVX 1
-#define OIIO_NO_AVX2 1
-#endif
-
 #pragma push_macro("COLOR")
 #pragma push_macro("NORMAL")
 #undef COLOR
