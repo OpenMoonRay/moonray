@@ -208,12 +208,10 @@ CubicSpline::postIntersect(mcrt_common::ThreadLocalState &tls,
 
     const scene_rdl2::rdl2::Geometry* geometry = intersection.getGeometryObject();
     MNRY_ASSERT(geometry != nullptr);
-    if (mSubType == SubType::RAY_FACING && geometry->getRayEpsilon() <= 0.0f) {
+    if (geometry->getRayEpsilon() <= 0.0f) {
         // Use 1.5 times the curve radius as the next ray epsilon hint.
-        // This lets shadow and continuation rays escape
-        // the intersected hair, instead of self-intersecting. This only applies
-        // to RAY_FACING curves because they are flat ribbons that pivot to face the ray.
-        // Real geometries should use the default ray epsilon.
+        // This lets shadow and continuation rays escape the intersected
+        // hair, instead of self-intersecting.
         float curveRadius = w0 * cv[0].w + w1 * cv[1].w + w2 * cv[2].w + w3 * cv[3].w;
         intersection.setEpsilonHint(1.5f * curveRadius);
     } else {
