@@ -250,7 +250,7 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                     // transition
                     int lpeStateId = pv.lpeStateId;
                     lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls,
-                        lpeStateId, bsdf);
+                        lpeStateId, bsdf, &lobe);
                     // intentionally ignore the the internal lambert
                     // lobe event (see MOONRAY-1957).
                     lpeStateId = lightAovs.lightEventTransition(pbrTls,
@@ -279,7 +279,7 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                 const AovSchema &aovSchema = *fs.mAovSchema;
                 // transition
                 int lpeStateId = pv.lpeStateId;
-                lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf);
+                lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf, &lobe);
                 // intentionally ignore the the internal lambert
                 // lobe event (see MOONRAY-1957).
                 lpeStateId = lightAovs.lightEventTransition(pbrTls, lpeStateId, light);
@@ -371,7 +371,7 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
         const LightAovs &lightAovs = *fs.mLightAovs;
         // transition
         int lpeStateId = pv.lpeStateId;
-        lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf);
+        lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf, &lobe);
         // intentionally ignore the the internal lambert
         // lobe event (see MOONRAY-1957).
         nextPv.lpeStateId = lpeStateId;
@@ -495,7 +495,7 @@ PathIntegrator::computeRadianceSubsurfaceSample(pbr::TLState *pbrTls,
                     // transition
                     int lpeStateId = pv.lpeStateId;
                     lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls,
-                        lpeStateId, bsdf);
+                        lpeStateId, bsdf, &lobe);
                     // intentionally ignore the the internal lambert
                     // lobe event (see MOONRAY-1957).
                     lpeStateId = lightAovs.lightEventTransition(pbrTls,
@@ -655,6 +655,7 @@ PathIntegrator::computeRadianceDiffusionSubsurface(pbr::TLState *pbrTls,
         shading::BsdfSlice sliceLocal(isect.getNg(), slice.getWo(), true, true, slice.getShadowTerminatorFix());
         LambertBsdfLobe lobeLocal(N, scene_rdl2::math::sWhite, true);
         lobeLocal.setLightSet(bssrdf.getLightSet()); // inherit the bssrdf lightset
+        lobeLocal.setLabel(bssrdf.getLabel()); // disambiguate LPE label when multiple bssrdfs exist
 
         // Not doing any subsurface computations
         int subsurfaceSplitFactor = 1;
@@ -884,6 +885,7 @@ PathIntegrator::computeRadianceDiffusionSubsurface(pbr::TLState *pbrTls,
             slice.getShadowTerminatorFix());
         LambertBsdfLobe lobeLocal(subsurfaceSamples[i].mN, scene_rdl2::math::sWhite, true);
         lobeLocal.setLightSet(bssrdf.getLightSet()); // inherit the bssrdf lightset
+        lobeLocal.setLabel(bssrdf.getLabel()); // disambiguate LPE label when multiple bssrdfs exist
 
         // TODO: Need to pass rayProj and updated pv instead of ray, pv
         radiance += computeRadianceSubsurfaceSample(
@@ -1066,6 +1068,7 @@ PathIntegrator::computeDiffusionForwardScattering(pbr::TLState *pbrTls, const Bs
             slice.getShadowTerminatorFix());
         LambertBsdfLobe lobeGlobal(NiMap, scene_rdl2::math::sWhite, true);
         lobeGlobal.setLightSet(bssrdf.getLightSet()); // inherit the bssrdf lightset
+        lobeGlobal.setLabel(bssrdf.getLabel()); // disambiguate LPE label when multiple bssrdfs exist
         // TODO: Need to pass rayBack and updated pv instead of ray, pv
         radiance += computeRadianceSubsurfaceSample(pbrTls, bsdf,
             sp, nextPv, ray, isectBack.getdNdx(), isectBack.getdNdy(),
@@ -1512,6 +1515,7 @@ PathIntegrator::computeRadiancePathTraceSubsurface(pbr::TLState* pbrTls,
                 const bool isReflection = true;
                 LambertBsdfLobe lobeLocal(nOut, scene_rdl2::math::sWhite, isReflection);
                 lobeLocal.setLightSet(nullptr); // for volumeSubsurface: no bssrdf and no parent bsdf lobe, can't do anything
+                lobeLocal.setLabel(volumeSubsurface.getLabel()); // disambiguate LPE label when multiple bssrdfs/volumeSubsurfaces exist
                 radiance += computeRadianceSubsurfaceSample(
                     pbrTls, bsdf, sp, pv, ray, isectOut.getdNdx(), isectOut.getdNdy(),
                     pt, transmissionFresnel, lightSet, lobeLocal, sliceLocal, pOut, nOut,
@@ -1723,6 +1727,7 @@ PathIntegrator::computeRadiancePathTraceSubsurface(pbr::TLState* pbrTls,
         const bool isReflection = true;
         LambertBsdfLobe lobeLocal(nOut, scene_rdl2::math::sWhite, isReflection);
         lobeLocal.setLightSet(nullptr);  // for volumeSubsurface: no bssrdf and no bsdf lobe, can't do anything
+        lobeLocal.setLabel(volumeSubsurface.getLabel()); // disambiguate LPE label when multiple bssrdfs/volumeSubsurfaces exist
         radiance += computeRadianceSubsurfaceSample(
             pbrTls, bsdf, sp, pv, ray, isectOut.getdNdx(), isectOut.getdNdy(),
             pt, transmissionFresnel, lightSet, lobeLocal, sliceLocal, pOut, nOut,

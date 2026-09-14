@@ -830,8 +830,12 @@ public:
     // this is typically a final transition.
     int materialAovEventTransition(pbr::TLState *pbrTls, int lpeStateId, int lpeLabelId) const;
 
-    // transition the LPE state machine to a hit on a bssrdf
-    int subsurfaceEventTransition(pbr::TLState *pbrTls, int lpeStateId, const shading::Bsdf &bsdf) const;
+    // transition the LPE state machine to a hit on a bssrdf.
+    // currentLobe, when non-null, identifies which subsurface component this event came from
+    // via the encoded LPE label stored on the lobe (so we don't always assume bsdf.getBssrdf(0)).
+    // If currentLobe has no label of its own, this falls back to the bsdf's material label.
+    int subsurfaceEventTransition(pbr::TLState *pbrTls, int lpeStateId, const shading::Bsdf &bsdf,
+                                   const shading::BsdfLobe *currentLobe = nullptr) const;
 
     // transition the LPE state machine to a volume scattering event
     int volumeEventTransition(pbr::TLState *pbrTls, int lpeStateId) const;

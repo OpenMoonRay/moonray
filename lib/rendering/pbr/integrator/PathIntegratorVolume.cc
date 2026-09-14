@@ -2281,7 +2281,7 @@ PathIntegrator::computeRadianceEmissiveRegionsSSS(pbr::TLState *pbrTls,
             const LightAovs &lightAovs = *fs.mLightAovs;
             // transition
             int lpeStateId = pv.lpeStateId;
-            lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf);
+            lpeStateId = lightAovs.subsurfaceEventTransition(pbrTls, lpeStateId, bsdf, &lobe);
             lpeStateId = lightAovs.emissionEventTransition(pbrTls, lpeStateId,
                 scene->getVolumeLabelId(emissiveRegion.mVolumeId));
             // accumulate matching aovs
