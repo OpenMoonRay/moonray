@@ -1085,27 +1085,26 @@ RenderStats::logGeometryUsage(const geom::GeometryStatistics& totalGeomStatistic
             return geomStateInfo[a].second.mCurvesCount > geomStateInfo[b].second.mCurvesCount;
         });
 
-    auto buildGeomTable = [&geomStateInfo](std::string title, const std::vector<std::size_t>& indices) {
-        GeomTable table(std::move(title), "Geometry Name",
-        "Face Count", "Mesh Vertex Count",
-        "Curves Count", "Curves CV Count",
-        "Instance Count");
+    StatsTable<4> faceGeomTable("Geometry Statistics (by Face Count)", "Geometry Name",
+        "Face Count", "Mesh Vertex Count", "Instance Count");
+    StatsTable<4> curvesGeomTable("Geometry Statistics (by Curves Count)", "Geometry Name",
+        "Curves Count", "Curves CV Count", "Instance Count");
 
-        for (std::size_t i : indices) {
-            const geom::GeometryStatistics& geomStats = geomStateInfo[i].second;
-            table.emplace_back(geomStateInfo[i].first,
-                geomStats.mFaceCount,
-                geomStats.mMeshVertexCount,
-                geomStats.mCurvesCount,
-                geomStats.mCVCount,
-                geomStats.mInstanceCount);
-        }
+    for (std::size_t i : faceIndices) {
+        const geom::GeometryStatistics& geomStats = geomStateInfo[i].second;
+        faceGeomTable.emplace_back(geomStateInfo[i].first,
+            geomStats.mFaceCount,
+            geomStats.mMeshVertexCount,
+            geomStats.mInstanceCount);
+    }
 
-        return table;
-    };
-
-    GeomTable faceGeomTable = buildGeomTable("Geometry Statistics (by Face Count)", faceIndices);
-    GeomTable curvesGeomTable = buildGeomTable("Geometry Statistics (by Curves Count)", curvesIndices);
+    for (std::size_t i : curvesIndices) {
+        const geom::GeometryStatistics& geomStats = geomStateInfo[i].second;
+        curvesGeomTable.emplace_back(geomStateInfo[i].first,
+            geomStats.mCurvesCount,
+            geomStats.mCVCount,
+            geomStats.mInstanceCount);
+    }
 
     StatsTable<2> summaryTable("Geometry Statistics Summary");
     summaryTable.emplace_back("Total Face Count",
@@ -1136,13 +1135,15 @@ RenderStats::logGeometryUsage(const geom::GeometryStatistics& totalGeomStatistic
         mInfoStream.imbue(getLocale());
         mInfoStream.precision(2);
         mInfoStream.setf(std::ios_base::fixed, std::ios_base::floatfield);
-        auto fmt = getHumanColumnFlags(mInfoStream, geomTable);
-        fmt.set(0).left();
         const std::string pre = getPrependString();
         if (!faceGeomTable.empty()) {
+            auto fmt = getHumanColumnFlags(mInfoStream, faceGeomTable);
+            fmt.set(0).left();
             writeInfoTable(mInfoStream, pre, faceGeomTable, fmt);
         }
         if (!curvesGeomTable.empty()) {
+            auto fmt = getHumanColumnFlags(mInfoStream, curvesGeomTable);
+            fmt.set(0).left();
             writeInfoTable(mInfoStream, pre, curvesGeomTable, fmt);
         }
         writeEqualityInfoTable(mInfoStream, pre, summaryTable);
