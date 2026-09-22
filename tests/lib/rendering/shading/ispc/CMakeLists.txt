@@ -63,10 +63,6 @@ target_include_directories(${target}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 
-if (NOT IsDarwinPlatform)
-    set(PlatformSpecificLibs atomic)
-endif()
-
 target_link_libraries(${target}
     PRIVATE
         Moonray::common_mcrt_macros
@@ -79,7 +75,6 @@ target_link_libraries(${target}
         SceneRdl2::pdevunit
         SceneRdl2::scene_rdl2
         SceneRdl2::render_util
-        ${PlatformSpecificLibs}
 )
 
 add_dependencies(${target} ${objLib})

@@ -109,7 +109,7 @@ target_link_libraries(${component}
         embree
         OpenImageIO::OpenImageIO
         OpenSubDiv::OpenSubDiv
-        OpenVDB::OpenVDB
+        OpenVDB::openvdb
         ${PROJECT_NAME}::common_file_resource
         ${PROJECT_NAME}::common_mcrt_util
         ${PROJECT_NAME}::rendering_mcrt_common

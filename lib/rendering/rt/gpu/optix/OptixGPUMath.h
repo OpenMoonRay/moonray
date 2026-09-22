@@ -496,8 +496,6 @@ namespace rt {
 
 struct OptixGPUXform
 {
-    OptixGPUXform() = default;
-
     __host__ __device__
     static OptixGPUXform identityXform()
     {
@@ -575,4 +573,3 @@ struct OptixGPUXform
 
 } // namespace rt
 } // namespace moonray
-

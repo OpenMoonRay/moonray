@@ -12,10 +12,6 @@ target_sources(${target}
         moonray.cc
 )
 
-if (NOT IsDarwinPlatform)
-    set(PlatformSpecificLibs atomic)
-endif()
-
 target_link_libraries(${target}
     PRIVATE
         ${PROJECT_NAME}::application
@@ -27,7 +23,6 @@ target_link_libraries(${target}
         SceneRdl2::scene_rdl2
         OpenImageIO::OpenImageIO
         ${MKL_target}
-        ${PlatformSpecificLibs}
 )
 
 if (MOONRAY_ENABLE_ATHENA_LOGGING)

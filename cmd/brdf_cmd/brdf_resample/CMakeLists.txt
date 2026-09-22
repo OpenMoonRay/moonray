@@ -10,17 +10,12 @@ target_sources(${target}
         main.cc
 )
 
-if (NOT IsDarwinPlatform)
-    set(PlatformSpecificLibs atomic)
-endif()
-
 target_link_libraries(${target}
     PRIVATE
         ${PROJECT_NAME}::rendering_rndr
         ${PROJECT_NAME}::rendering_shading
         SceneRdl2::render_logging
         SceneRdl2::render_util
-        ${PlatformSpecificLibs}
 )
 
 # Set standard compile/link options
