@@ -47,7 +47,7 @@ BsdfSlice::computeShadowTerminatorFix(const scene_rdl2::math::Vec3f &N, const sc
         // sin(0.15) = 0.14944f;
         // sin(0.02)  = 0.01999f;
         const float cosX = scene_rdl2::math::clamp(scene_rdl2::math::dot(N, mNg));
-        const float d = scene_rdl2::math::lerp(0.14922f, 0.01999f, cosX);
+        const float d = scene_rdl2::math::lerp(0.14944f, 0.01999f, cosX);
         const float t = scene_rdl2::math::clamp(scene_rdl2::math::dot(mNg, wi)/d);
         // Cubic Hermite Interpolation
         G = t*t*(3.0f - 2.0f*t);

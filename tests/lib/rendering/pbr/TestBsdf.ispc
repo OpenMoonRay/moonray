@@ -10,6 +10,7 @@
 #include <moonray/rendering/shading/ispc/bsdf/Bsdf.isph>
 #include <moonray/rendering/shading/ispc/bsdf/BsdfSlice.isph>
 #include <moonray/rendering/shading/ispc/Util.isph>
+#include <moonray/rendering/shading/ispc/bsdf/fabric/BsdfFabric.isph>
 #include <scene_rdl2/common/math/ispc/ReferenceFrame.isph>
 #include <scene_rdl2/render/util/Random.isph>
 
@@ -442,3 +443,75 @@ TestBsdf_testEvalIntegral(uniform TestBsdfEvalIntegral * uniform test)
     }
 }
 
+//----------------------------------------------------------------------------
+// Fabric shadow terminator test
+
+struct TestFabricShadowTerminator
+{
+    // Inputs
+    uniform Vec3f mN;
+    uniform Vec3f mNg;
+    uniform Vec3f mTangent;
+    uniform Vec3f mThreadDirection;
+    uniform Vec3f mWo;
+    uniform Vec3f mWi;
+    uniform float mRoughness;
+    uniform Color mColor;
+    uniform ShadowTerminatorFix mShadowTerminatorFix;
+
+    // Outputs
+    uniform Color mResult;
+    uniform float mPdf;
+};
+
+export void
+TestBsdf_evalFabricShadowTerminator(
+    uniform TestFabricShadowTerminator * uniform test)
+{
+    // Broadcast the shared inputs into per-lane values.
+    const varying Vec3f N = test->mN;
+    const varying Vec3f Ng = test->mNg;
+    const varying Vec3f tangent = test->mTangent;
+    const varying Vec3f threadDirection = test->mThreadDirection;
+    const varying Vec3f wo = test->mWo;
+    const varying Vec3f wi = test->mWi;
+    const varying Color color = test->mColor;
+
+    // Match the C++ fabric settings. The final true selects DWA fabric.
+    varying FabricBsdfLobe lobe;
+    FabricBsdfLobe_init(
+        &lobe,
+        N,
+        tangent,
+        threadDirection,
+        0.0f,
+        test->mRoughness,
+        color,
+        true);
+
+    // Include the cosine term and use the requested correction mode.
+    varying BsdfSlice slice;
+    BsdfSlice_init(
+        &slice,
+        Ng,
+        wo,
+        BSDF_LOBE_TYPE_ALL,
+        true,
+        true,
+        test->mShadowTerminatorFix);
+
+    // Evaluate the production fabric implementation in each SIMD lane.
+    // The evaluation function expects a pointer to the base BsdfLobe type.
+    varying float pdf = 0.0f;
+    const varying Color result = FabricBsdfLobe_eval(
+        (varying BsdfLobe * uniform) &lobe,
+        slice,
+        wi,
+        &pdf);
+
+    // All lanes have identical inputs; return lane zero for the C++ comparison.
+    test->mResult.r = extract(result.r, 0);
+    test->mResult.g = extract(result.g, 0);
+    test->mResult.b = extract(result.b, 0);
+    test->mPdf = extract(pdf, 0);
+}

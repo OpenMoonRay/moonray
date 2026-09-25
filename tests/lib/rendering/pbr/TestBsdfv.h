@@ -41,6 +41,7 @@ public:
     CPPUNIT_TEST(testEyeCaustic);
 
     CPPUNIT_TEST(testDwaFabric);
+    CPPUNIT_TEST(testDwaFabricShadowTerminator);
     CPPUNIT_TEST(testKajiyaKayFabric);
 
     CPPUNIT_TEST(testAshikhminShirley);
@@ -73,6 +74,7 @@ public:
     void testEyeCaustic();
 
     void testDwaFabric();
+    void testDwaFabricShadowTerminator();
     void testKajiyaKayFabric();
 
     void testAshikhminShirley();

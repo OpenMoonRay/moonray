@@ -7,12 +7,14 @@
 #include "TestBsdfCommon.h"
 #include "TestBsdfv.h"
 #include "TestUtil.h"
+#include "TestBsdf_ispc_stubs.h"
 #include <moonray/rendering/pbr/core/PbrTLState.h>
 #include <moonray/rendering/pbr/integrator/BsdfSampler.h>
 
 #include <moonray/rendering/pbr/core/PbrTLState.h>
 #include <moonray/rendering/shading/bsdf/Bsdf.h>
 #include <moonray/rendering/shading/bsdf/BsdfSlice.h>
+#include <moonray/rendering/shading/bsdf/fabric/BsdfFabric.h>
 
 #include <scene_rdl2/common/math/Color.h>
 #include <scene_rdl2/render/util/Random.h>
@@ -296,6 +298,87 @@ TestBsdfv::testDwaFabric()
                               (sRoughness[i] > 0.1f), TestBsdfSettings::BSDFV);
         runTest(test, sViewAnglesTheta, 1, getSampleCount(sRoughness[i]));
     }
+}
+
+//----------------------------------------------------------------------------
+
+void
+TestBsdfv::testDwaFabricShadowTerminator()
+{
+    // Declare surface color, orientation, and normal directions
+    const scene_rdl2::math::Color color(0.8f, 0.5f, 0.2f);
+    const float roughness = 0.5f;
+    const scene_rdl2::math::Vec3f N(0.0f, 0.0f, 1.0f);
+    const scene_rdl2::math::Vec3f Ng(0.0f, 0.6f, 0.8f);
+    const scene_rdl2::math::Vec3f tangent(1.0f, 0.0f, 0.0f);
+    const scene_rdl2::math::Vec3f threadDirection(1.0f, 0.0f, 0.0f);
+    const scene_rdl2::math::Vec3f wo = N;
+    scene_rdl2::math::Vec3f wi(0.0f, -0.8f, 0.61f);
+    wi = scene_rdl2::math::normalize(wi);
+
+    // scalar fabric lobe
+    shading::DwaFabricBsdfLobe lobe(
+        N, tangent, threadDirection, 0.0f, roughness, color);
+
+
+    const shading::BsdfSlice sliceOff(Ng, wo, true, true, ispc::SHADOW_TERMINATOR_FIX_OFF);
+    const shading::BsdfSlice sliceOn(Ng, wo, true, true, ispc::SHADOW_TERMINATOR_FIX_CUSTOM);
+
+    float pdfOff = 0.0f;
+    float pdfOn = 0.0f;
+
+    const scene_rdl2::math::Color scalarOff = lobe.eval(sliceOff, wi, &pdfOff);
+    const scene_rdl2::math::Color scalarOn = lobe.eval(sliceOn, wi, &pdfOn);
+
+    // We should see a non-zero, softened terminator
+    CPPUNIT_ASSERT(scalarOff.r > 0.0f);
+    CPPUNIT_ASSERT(scalarOn.r > 0.0f);
+    CPPUNIT_ASSERT(scalarOn.r < scalarOff.r);
+
+    // With the fix on, shouldn't change the pdf
+    CPPUNIT_ASSERT(pdfOff > 0.0f);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(pdfOff, pdfOn, 1.0e-6);
+
+    // Pass the same material and directions to the ISPC helper.
+    ispc::TestFabricShadowTerminator test = {};
+    test.mN = {N.x, N.y, N.z};
+    test.mNg = {Ng.x, Ng.y, Ng.z};
+    test.mTangent = {tangent.x, tangent.y, tangent.z};
+    test.mThreadDirection = {
+        threadDirection.x, threadDirection.y, threadDirection.z};
+    test.mWo = {wo.x, wo.y, wo.z};
+    test.mWi = {wi.x, wi.y, wi.z};
+    test.mRoughness = roughness;
+    test.mColor = {color.r, color.g, color.b};
+
+    const double tolerance = 1.0e-5;
+
+    // Correction disabled.
+    test.mShadowTerminatorFix = ispc::SHADOW_TERMINATOR_FIX_OFF;
+    ispc::TestBsdf_evalFabricShadowTerminator(&test);
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOff.r, test.mResult.r, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOff.g, test.mResult.g, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOff.b, test.mResult.b, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        pdfOff, test.mPdf, tolerance);
+
+    // Custom correction enabled.
+    test.mShadowTerminatorFix = ispc::SHADOW_TERMINATOR_FIX_CUSTOM;
+    ispc::TestBsdf_evalFabricShadowTerminator(&test);
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOn.r, test.mResult.r, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOn.g, test.mResult.g, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        scalarOn.b, test.mResult.b, tolerance);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        pdfOn, test.mPdf, tolerance);
+
 }
 
 //----------------------------------------------------------------------------

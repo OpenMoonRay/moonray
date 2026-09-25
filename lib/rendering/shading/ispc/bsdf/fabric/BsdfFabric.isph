@@ -172,7 +172,10 @@ FabricBsdfLobe_eval(const varying BsdfLobe * uniform lobe,
                     fabricBRDF * fab->mColor *
                     (slice.mIncludeCosineTerm ? cosThetaWi : 1.0f);
 
-    return f;
+    // Soften hard shadow terminator due to shading normals
+    const float Gs = BsdfSlice_computeShadowTerminatorFix(&slice, getN(fab->mFrame), wi);
+
+    return Gs * f;
 }
 
 inline void
