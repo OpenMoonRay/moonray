@@ -28,7 +28,6 @@
 #include <scene_rdl2/scene/rdl2/RenderOutput.h>
 #include <scene_rdl2/scene/rdl2/rdl2.h>
 
-
 #include <ctime>
 #include <iomanip>
 #include <fstream>
@@ -1108,6 +1107,7 @@ RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars)
     }
 }
 
+
 void
 RenderStats::logVectorMemoryUsage(size_t rayQueuesBytes,
                                   size_t occlusionQueuesBytes,
@@ -1235,18 +1235,64 @@ RenderStats::logGeometryUsage(const geom::GeometryStatistics& totalGeomStatistic
         const GeometryStatsTable& geomStateInfo)
 {
     using GeomTable = StatsTable<6>;
+
     GeomTable geomTable("Geometry Statistics", "Geometry Name",
         "Face Count", "Mesh Vertex Count",
         "Curves Count", "Curves CV Count",
         "Instance Count");
 
-    for(std::size_t i = 0; i < geomStateInfo.size(); ++i) {
+    for (std::size_t i = 0; i < geomStateInfo.size(); ++i) {
         geomTable.emplace_back(geomStateInfo[i].first,
            geomStateInfo[i].second.mFaceCount,
            geomStateInfo[i].second.mMeshVertexCount,
            geomStateInfo[i].second.mCurvesCount,
            geomStateInfo[i].second.mCVCount,
            geomStateInfo[i].second.mInstanceCount);
+    }
+
+    std::vector<std::size_t> faceIndices;
+    std::vector<std::size_t> curvesIndices;
+    faceIndices.reserve(geomStateInfo.size());
+    curvesIndices.reserve(geomStateInfo.size());
+    
+    for (std::size_t i = 0; i < geomStateInfo.size(); ++i) {
+        if (geomStateInfo[i].second.mFaceCount > 0 || geomStateInfo[i].second.mMeshVertexCount > 0) {
+            faceIndices.push_back(i);
+        }
+        if (geomStateInfo[i].second.mCurvesCount > 0 || geomStateInfo[i].second.mCVCount > 0) {
+            curvesIndices.push_back(i);
+        }
+    }
+
+    std::stable_sort(faceIndices.begin(), faceIndices.end(),
+        [&geomStateInfo](std::size_t a, std::size_t b) {
+            return geomStateInfo[a].second.mFaceCount > geomStateInfo[b].second.mFaceCount;
+        });
+
+    std::stable_sort(curvesIndices.begin(), curvesIndices.end(),
+        [&geomStateInfo](std::size_t a, std::size_t b) {
+            return geomStateInfo[a].second.mCurvesCount > geomStateInfo[b].second.mCurvesCount;
+        });
+
+    StatsTable<4> faceGeomTable("Geometry Statistics (by Face Count)", "Geometry Name",
+        "Face Count", "Mesh Vertex Count", "Instance Count");
+    StatsTable<4> curvesGeomTable("Geometry Statistics (by Curves Count)", "Geometry Name",
+        "Curves Count", "Curves CV Count", "Instance Count");
+
+    for (std::size_t i : faceIndices) {
+        const geom::GeometryStatistics& geomStats = geomStateInfo[i].second;
+        faceGeomTable.emplace_back(geomStateInfo[i].first,
+            geomStats.mFaceCount,
+            geomStats.mMeshVertexCount,
+            geomStats.mInstanceCount);
+    }
+
+    for (std::size_t i : curvesIndices) {
+        const geom::GeometryStatistics& geomStats = geomStateInfo[i].second;
+        curvesGeomTable.emplace_back(geomStateInfo[i].first,
+            geomStats.mCurvesCount,
+            geomStats.mCVCount,
+            geomStats.mInstanceCount);
     }
 
     StatsTable<2> summaryTable("Geometry Statistics Summary");
@@ -1278,10 +1324,17 @@ RenderStats::logGeometryUsage(const geom::GeometryStatistics& totalGeomStatistic
         mInfoStream.imbue(getLocale());
         mInfoStream.precision(2);
         mInfoStream.setf(std::ios_base::fixed, std::ios_base::floatfield);
-        auto fmt = getHumanColumnFlags(mInfoStream, geomTable);
-        fmt.set(0).left();
         const std::string pre = getPrependString();
-        writeInfoTable(mInfoStream, pre, geomTable, fmt);
+        if (!faceGeomTable.empty()) {
+            auto fmt = getHumanColumnFlags(mInfoStream, faceGeomTable);
+            fmt.set(0).left();
+            writeInfoTable(mInfoStream, pre, faceGeomTable, fmt);
+        }
+        if (!curvesGeomTable.empty()) {
+            auto fmt = getHumanColumnFlags(mInfoStream, curvesGeomTable);
+            fmt.set(0).left();
+            writeInfoTable(mInfoStream, pre, curvesGeomTable, fmt);
+        }
         writeEqualityInfoTable(mInfoStream, pre, summaryTable);
     }
 }
@@ -2261,3 +2314,4 @@ RenderStats::logMcrtProgress(float elapsedMcrtTime, float pctComplete)
 
 } // namespace rndr
 } // namespace moonray
+
