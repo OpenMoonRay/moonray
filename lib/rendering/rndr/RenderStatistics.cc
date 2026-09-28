@@ -780,12 +780,11 @@ void
 RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars, std::ostream& outs, OutputFormat format)
 {
     const bool csvStream = format == OutputFormat::athenaCSV || format == OutputFormat::fileCSV;
-
-    // TODO: do we want to add anymore scene vars to this list?
+    
     HalfOpenViewport aperture = vars.getRezedApertureWindow();
     HalfOpenViewport region = vars.getRezedRegionWindow();
 
-    StatsTable<2> sceneVarTable("Scene Variables");
+    StatsTable<2> sceneVarTable("Primary Scene Variables");
     sceneVarTable.emplace_back("Width", vars.get(scene_rdl2::rdl2::SceneVariables::sImageWidth));
     sceneVarTable.emplace_back("Height", vars.get(scene_rdl2::rdl2::SceneVariables::sImageHeight));
     sceneVarTable.emplace_back("Resolution", vars.get(scene_rdl2::rdl2::SceneVariables::sResKey));
@@ -861,7 +860,9 @@ RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars, std
     ssTable.emplace_back("Max adaptive samples", vars.get(scene_rdl2::rdl2::SceneVariables::sMaxAdaptiveSamples));
     ssTable.emplace_back("Target adaptive error", vars.get(scene_rdl2::rdl2::SceneVariables::sTargetAdaptiveError));
     ssTable.emplace_back("Pixel samples sqrt", vars.get(scene_rdl2::rdl2::SceneVariables::sPixelSamplesSqrt));
+    ssTable.emplace_back("Light sampling mode", vars.get(scene_rdl2::rdl2::SceneVariables::sLightSamplingMode));
     ssTable.emplace_back("Light samples sqrt", vars.get(scene_rdl2::rdl2::SceneVariables::sLightSamplesSqrt));
+    ssTable.emplace_back("Light sampling quality", vars.get(scene_rdl2::rdl2::SceneVariables::sLightSamplingQuality));
     ssTable.emplace_back("Bsdf samples sqrt", vars.get(scene_rdl2::rdl2::SceneVariables::sBsdfSamplesSqrt));
     ssTable.emplace_back("Bssrdf samples sqrt", vars.get(scene_rdl2::rdl2::SceneVariables::sBssrdfSamplesSqrt));
     ssTable.emplace_back("Max depth", vars.get(scene_rdl2::rdl2::SceneVariables::sMaxDepth));
@@ -883,12 +884,192 @@ RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars, std
     ssTable.emplace_back("Volume illumination samples", vars.get(scene_rdl2::rdl2::SceneVariables::sVolumeIlluminationSamples));
     ssTable.emplace_back("Volume opacity threshold", vars.get(scene_rdl2::rdl2::SceneVariables::sVolumeOpacityThreshold));
 
+    StatsTable<2> fullSceneVarTable("All Scene Variables");
+    const scene_rdl2::rdl2::SceneClass& sceneClass = vars.getSceneClass();
 
+    std::size_t idx = 0;
+    std::vector <std::string> attrNames;
+        
+    for (auto iter = sceneClass.beginAttributes(); iter != sceneClass.endAttributes(); ++iter, ++idx) {
+        attrNames.push_back(std::string((*iter)->getName()));
+    }
+    std::sort(attrNames.begin(), attrNames.end());
+    for (int i = 0; i < idx; ++i) {
+        std::string attrName = attrNames[i];
+        const scene_rdl2::rdl2::Attribute* attr = sceneClass.getAttribute(attrName);
+        switch (attr->getType()) {
+        case scene_rdl2::rdl2::TYPE_BOOL: {
+            scene_rdl2::rdl2::AttributeKey<bool> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Bool>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey) ? "true" : "false");
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_INT:
+        {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Int> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Int>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            if (attr->isEnumerable()) {
+                std::string enumDescription = std::to_string(vars.get(attrKey)) + "--" + attr->getEnumDescription(vars.get(attrKey));
+                fullSceneVarTable.emplace_back(attrName, enumDescription);
+            }
+            else {
+                fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            }
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_FLOAT: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Float> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Float>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_SCENE_OBJECT: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::SceneObject*> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::SceneObject*>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            scene_rdl2::rdl2::SceneObject* value = vars.get(attrKey);
+            fullSceneVarTable.emplace_back(attrName, value ? value->getName(): "<null>");
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_STRING: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::String> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::String>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_RGB: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Rgb> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Rgb>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_RGBA: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Rgba> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Rgba>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_MAT4F: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Mat4f> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Mat4f>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_MAT3F: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Mat3f> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Mat3f>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_VEC4F: {
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::Vec4f> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Vec4f>(attrName);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            fullSceneVarTable.emplace_back(attrName, vars.get(attrKey));
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_INT_VECTOR: {
+            std::string strVal = "";
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::IntVector> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::IntVector>(attrName);
+            scene_rdl2::rdl2::IntVector attr_value = vars.get(attrKey);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            if (attr_value.empty()) {
+                strVal = "()";
+            } else {
+                strVal = '(' + std::to_string(attr_value.front());
+                for (auto iter = attr_value.begin() + 1; iter != attr_value.end(); ++iter) {
+                    strVal += ", " + std::to_string(*iter);
+                }
+                strVal += ')';
+            }
+            fullSceneVarTable.emplace_back(attrName, strVal);
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_FLOAT_VECTOR:
+        {
+            std::string strVal = "";
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::FloatVector> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::FloatVector>(attrName);
+            scene_rdl2::rdl2::FloatVector attr_value = vars.get(attrKey);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            if (attr_value.empty()) {
+                strVal = "()";
+            } else {
+                strVal = '(' + std::to_string(attr_value.front());
+                for (auto iter = attr_value.begin() + 1; iter != attr_value.end(); ++iter) {
+                    strVal += ", " + std::to_string(*iter);
+                }
+                strVal += ')';
+            }
+            fullSceneVarTable.emplace_back(attrName, strVal);
+            break;
+        }
+
+        case scene_rdl2::rdl2::TYPE_STRING_VECTOR:
+        {
+            std::string strVal = "";
+            scene_rdl2::rdl2::AttributeKey<scene_rdl2::rdl2::StringVector> attrKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::StringVector>(attrName);
+            scene_rdl2::rdl2::StringVector attr_value = vars.get(attrKey);
+            if (!vars.isDefault(attrKey)) {
+                attrName.insert(0, "*");
+            }
+            if (attr_value.empty()) {
+                strVal = "()";
+            } else {
+                strVal = '(' + attr_value.front();
+                for (auto iter = attr_value.begin() + 1; iter != attr_value.end(); ++iter) {
+                    strVal += ", " + *iter;
+                }
+                strVal += ')';
+            }
+            fullSceneVarTable.emplace_back(attrName, strVal);
+            break;
+        }
+
+        default:
+            fullSceneVarTable.emplace_back(attrName, "Unknown Type");
+            break;
+        }
+        
+    }
 
     if (csvStream) {
         outs.precision(2);
         writeEqualityCSVTable(outs, sceneVarTable, format == OutputFormat::athenaCSV);
         writeEqualityCSVTable(outs, ssTable, format == OutputFormat::athenaCSV);
+        writeEqualityCSVTable(outs, fullSceneVarTable, format == OutputFormat::athenaCSV);
     } else {
         const auto prepend = getPrependString();
         auto sceneVarFmt = getHumanEqualityColumnFlags(outs, sceneVarTable);
@@ -902,6 +1083,11 @@ RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars, std
         ssFmt.set(1).precision(5);
         ssFmt.set(1).fixed();
         writeEqualityInfoTable(outs, prepend, ssTable, ssFmt);
+
+        auto fullSceneVarFmt = getHumanEqualityColumnFlags(outs, fullSceneVarTable);
+        fullSceneVarFmt.set(1).precision(5);
+        fullSceneVarFmt.set(1).fixed();
+        writeEqualityInfoTable(outs, prepend, fullSceneVarTable, fullSceneVarFmt);
     }
 }
 
