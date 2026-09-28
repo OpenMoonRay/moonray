@@ -780,8 +780,6 @@ void
 RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars, std::ostream& outs, OutputFormat format)
 {
     const bool csvStream = format == OutputFormat::athenaCSV || format == OutputFormat::fileCSV;
-
-    // TODO: do we want to add anymore scene vars to this list?
     
     HalfOpenViewport aperture = vars.getRezedApertureWindow();
     HalfOpenViewport region = vars.getRezedRegionWindow();
@@ -1106,7 +1104,6 @@ RenderStats::logSceneVariables(const scene_rdl2::rdl2::SceneVariables &vars)
         logSceneVariables(vars, mInfoStream, OutputFormat::human);
     }
 }
-
 
 void
 RenderStats::logVectorMemoryUsage(size_t rayQueuesBytes,
