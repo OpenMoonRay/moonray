@@ -1,0 +1,12 @@
+diff --git a/cmake/MoonrayDso.cmake b/cmake/MoonrayDso.cmake
+index 101f9d3..14b661a 100644
+--- a/cmake/MoonrayDso.cmake
++++ b/cmake/MoonrayDso.cmake
+@@ -307,7 +307,6 @@ function(moonray_dso_simple targetName)
+            --in $<TARGET_FILE:${targetName}_proxy>
+            --out ${CMAKE_CURRENT_BINARY_DIR}/${dsoName}.json
+            DEPENDS ${targetName}_proxy
+-           BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${dsoName}.json
+            VERBATIM
+            )
+        add_custom_target(coredata_${targetName} ALL DEPENDS

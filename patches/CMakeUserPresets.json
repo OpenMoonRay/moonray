@@ -1,0 +1,29 @@
+{
+    "version": 4,
+    "configurePresets": [
+        {
+            "name": "macos-release-ninja",
+            "displayName": "macOS Release (Ninja, no Qt)",
+            "inherits": "macos-release",
+            "generator": "Ninja",
+            "environment": {
+                "DEPS_ROOT": "/Users/faputa/Documents/wave-tracer/installs",
+                "BUILD_DIR": "/Users/faputa/Documents/wave-tracer/build",
+                "TBB_ROOT": "$env{DEPS_ROOT}"
+            },
+            "cacheVariables": {
+                "BUILD_QT_APPS": "NO",
+                "BUILD_TESTING": "OFF",
+                "MOONRAY_USE_METAL": "OFF"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "macos-release-ninja",
+            "displayName": "macOS Release (Ninja, no Qt)",
+            "configurePreset": "macos-release-ninja",
+            "jobs": 6
+        }
+    ]
+}

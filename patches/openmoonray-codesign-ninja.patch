@@ -1,0 +1,16 @@
+diff --git a/lib/scene/rdl2/CMakeLists.txt b/lib/scene/rdl2/CMakeLists.txt
+index 31aeaef..fe7ac00 100644
+--- a/lib/scene/rdl2/CMakeLists.txt
++++ b/lib/scene/rdl2/CMakeLists.txt
+@@ -202,7 +202,10 @@ add_executable(rdl2_ispc_util)
+ target_sources(rdl2_ispc_util PRIVATE rdl2_ispc_util/rdl2_ispc_util.cc)
+ target_link_libraries(rdl2_ispc_util PRIVATE scene_rdl2_tmp)
+ if (IsDarwinPlatform)
+-    add_custom_command(TARGET rdl2_ispc_util POST_BUILD COMMAND /usr/bin/codesign -s - -f -o linker-signed */rdl2_ispc_util)
++    # moonray-blender-patch: use a generator expression instead of the
++    # Xcode-config-subdirectory glob (*/rdl2_ispc_util), which does not
++    # match the Ninja layout where the binary is in the current directory.
++    add_custom_command(TARGET rdl2_ispc_util POST_BUILD COMMAND /usr/bin/codesign -s - -f -o linker-signed $<TARGET_FILE:rdl2_ispc_util>)
+ endif()
+ 
+ # Set standard compile/link options

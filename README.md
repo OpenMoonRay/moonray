@@ -1,7 +1,45 @@
-# moonray - part of the [MoonRay](https://github.com/OpenMoonRay/openmoonray) project
-Policies concerning [Governance](https://github.com/OpenMoonRay/openmoonray/blob/main/GOVERNANCE.md), [Code of Conduct](https://github.com/OpenMoonRay/openmoonray/blob/main/CODE_OF_CONDUCT.md), and [Contribution](https://github.com/OpenMoonRay/openmoonray/blob/main/CONTRIBUTING.md) are available in the overarching MoonRay project, defined in the [`OpenMoonRay/openmoonray` GitHub repository superproject](https://github.com/OpenMoonRay/openmoonray).
+# MoonRay fork — Blender integration
 
-This repository implements the MoonRay render engine and the moonray command-line renderer.
-The code is comprised of roughly 20 libraries. moonray also contains a set of basic scene object (shader) plugins.
+This is a fork of [OpenMoonRay/moonray](https://github.com/OpenMoonRay/moonray)
+(the DreamWorks / Academy Software Foundation production path tracer) adding a
+**Blender add-on** that renders Blender scenes directly with the `moonray` CLI.
 
+The engine code is unchanged from upstream; all additions live in
+[`blender_addon/`](blender_addon/) on the `blender-addon` branch.
 
+## The add-on
+
+Registers **MoonRay** as a Blender render engine:
+
+1. exports the Blender scene to MoonRay's RDLA format (meshes, UVs, normals,
+   instancing, Cycles shader nodes, lights, camera, world),
+2. runs `moonray`,
+3. loads the EXR back into Blender's Render Result (F12 + animation),
+4. optional OIDN denoise.
+
+Feature highlights:
+
+- Cycles-native node parity: Principled BSDF (IOR, clearcoat, sheen,
+  subsurface, transmission, anisotropic, emission), Diffuse/Glossy/Glass/
+  Refraction/Translucent/Anisotropic/Velvet/Toon/Subsurface Scattering,
+  Blackbody, image + noise textures, normal maps.
+- Lights: Point / Sun / Spot / Area (square/rect/disk/ellipse, spread,
+  blackbody temperature).
+- Emissive meshes become MoonRay MeshLights (real area lights).
+- Progressive preview via MoonRay progress checkpoints.
+- Multi-material meshes split per material slot.
+
+Install: [`install_addon.sh`](blender_addon/) symlinks the add-on into
+Blender's add-ons folder. Full docs in
+[`blender_addon/README.md`](blender_addon/README.md).
+
+## Building & installing MoonRay
+
+Full build-from-source instructions: [`INSTALL.md`](INSTALL.md).
+macOS build notes and patches: [`COMPATIBILITY.md`](COMPATIBILITY.md).
+
+## Upstream
+
+Governance, Code of Conduct, and Contribution policies live in the upstream
+[OpenMoonRay/openmoonray](https://github.com/OpenMoonRay/openmoonray)
+superproject.

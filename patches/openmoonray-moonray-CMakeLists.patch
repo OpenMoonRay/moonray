@@ -1,0 +1,37 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 34bf67f..6b9be5c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -4,10 +4,13 @@
+ cmake_minimum_required (VERSION 3.23.1)
+ 
+ include(OMR_PackageVersion)  # Sets versionString, projectString and PACKAGE_NAME
++# moonray-blender-patch: never enable CMake's built-in ISPC language.
++# The MoonRay build invokes the ISPC compiler directly through custom
++# commands (MoonrayDso.cmake / ISPC_COMPILER) which also generate the
++# *_ispc_stubs.h headers. CMake's built-in ISPC language (enabled under the
++# Ninja generator by the original code) does not generate those headers and
++# breaks the build with "missing and no known rule to make it".
+ set(languages LANGUAGES CXX C)
+-if(NOT CMAKE_XCODE_BUILD_SYSTEM)
+-    list(APPEND languages ISPC)
+-endif()
+ project(${projectString}
+     VERSION ${versionString}
+     ${languages})
+@@ -73,6 +76,15 @@ endif()
+ 
+ if (MOONRAY_USE_METAL)
+     if(IsDarwinPlatform)
++        # moonray-blender-patch: with the Ninja generator the METAL language
++        # must be enabled explicitly (the official Xcode generator enables it
++        # implicitly). Required by lib/rendering/rt MetalGPUPrograms.metal.
++        check_language(METAL)
++        if(CMAKE_METAL_COMPILER)
++            enable_language(METAL)
++        else()
++            message(STATUS "No METAL support")
++        endif()
+         check_language(OBJCXX)
+         if(CMAKE_OBJCXX_COMPILER)
+             enable_language(OBJCXX)

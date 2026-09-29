@@ -1,0 +1,46 @@
+diff --git a/cmake/SceneRdl2CompileOptions.cmake b/cmake/SceneRdl2CompileOptions.cmake
+index 4d98ec6..bda0632 100644
+--- a/cmake/SceneRdl2CompileOptions.cmake
++++ b/cmake/SceneRdl2CompileOptions.cmake
+@@ -81,8 +81,12 @@ function(SceneRdl2_ispc_compile_options target)
+                  PROPERTY TARGET_OBJECTS $<TARGET_OBJECTS:${target}>)
+     set_property(TARGET ${target}
+                  PROPERTY ISPC_DEP_TARGET "")
+-    check_language(ISPC)
+-    if(NOT CMAKE_ISPC_COMPILER)
++    # moonray-blender-patch: always use the custom ISPC command path below;
++    # it both compiles the .ispc sources AND generates the *_ispc_stubs.h
++    # headers included by the C++ code. CMake's built-in ISPC language
++    # (enabled via check_language when the ISPC env var is set) generates no
++    # stub headers and breaks the Ninja build.
++    if(TRUE)
+         get_target_property(SOURCES ${target} SOURCES)
+         get_target_property(ISPC_HEADER_SUFFIX ${target} ISPC_HEADER_SUFFIX)
+         get_target_property(ISPC_HEADER_DIRECTORY ${target} ISPC_HEADER_DIRECTORY)
+@@ -134,11 +138,25 @@ function(SceneRdl2_ispc_compile_options target)
+                 COMMAND_EXPAND_LISTS
+                 VERBATIM
+                 DEPFILE ${depFile}
+-                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src})
++                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src}
++                # moonray-blender-patch: declare the generated stub header as
++                # a byproduct so the Ninja generator can resolve the header
++                # that C++ sources include (Xcode tolerates this implicitly).
++                BYPRODUCTS ${CMAKE_BINARY_DIR}/${ISPC_HEADER_DIRECTORY}/${srcName}${ISPC_HEADER_SUFFIX})
+             list(APPEND ISPC_TARGET_OBJECTS ${objOut})
+         endforeach()
+         target_link_libraries(${target}
+                 PRIVATE ${ISPC_TARGET_OBJECTS})
++        # moonray-blender-patch: mark .ispc sources as header-only so the
++        # Ninja generator does not require an ISPC compile rule for them
++        # (the custom commands above compile them and generate the stubs).
++        foreach(_ispc_src ${SOURCES})
++            get_filename_component(_ispc_ext ${_ispc_src} LAST_EXT)
++            if (_ispc_ext STREQUAL ".ispc")
++                set_source_files_properties(${_ispc_src} PROPERTIES
++                    HEADER_FILE_ONLY TRUE)
++            endif()
++        endforeach()
+         add_custom_target(${target}_ispc_dep DEPENDS ${ISPC_TARGET_OBJECTS})
+         add_dependencies(${target} ${target}_ispc_dep)
+         set_property(TARGET ${target}

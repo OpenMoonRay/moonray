@@ -1,0 +1,193 @@
+diff --git a/building/macOS/CMakeLists.txt b/building/macOS/CMakeLists.txt
+index 00085e2..7919cde 100644
+--- a/building/macOS/CMakeLists.txt
++++ b/building/macOS/CMakeLists.txt
+@@ -26,11 +26,19 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0)
+     set(POLICY_MIN_ENV CMAKE_POLICY_VERSION_MINIMUM=3.5)
+ endif()
+ 
++# moonray-blender-patch: cap parallel jobs (24GB RAM machines OOM at -j<cores>
++# on USD/Boost), and allow skipping the Qt5 dependency build when no Qt apps
++# are needed (BUILD_QT_APPS=NO on the main build).
++set(MAX_BUILD_JOBS 6 CACHE STRING "Maximum parallel build jobs per dependency")
+ include(ProcessorCount)
+ ProcessorCount(N)
+ if(NOT N EQUAL 0)
++  if(N GREATER MAX_BUILD_JOBS)
++    set(N ${MAX_BUILD_JOBS})
++  endif()
+   set(JOBS_ARG -j${N})
+ endif()
++option(SKIP_QT "Skip building Qt5 (only needed for moonray_gui)" OFF)
+ 
+ file(REAL_PATH ${CMAKE_SOURCE_DIR} rootSrcDir)
+ set(THIS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+@@ -53,6 +61,8 @@ set(COMMON_CMAKE_ARGS
+ 
+ ExternalProject_Add(Blosc
+     GIT_REPOSITORY https://github.com/Blosc/c-blosc
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 616f4b7 # 1.21.6 # macOS 26 Tahoe
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -76,6 +86,8 @@ set(CHAIN Boost)
+ 
+ ExternalProject_Add(JsonCpp
+     GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 5defb4ed1a4293b8e2bf641e16b156fb9de498cc # 1.9.5
+     CMAKE_ARGS
+         ${COMMON_CMAKE_ARGS}
+@@ -112,6 +124,8 @@ set(CHAIN MicroHttpd)
+ 
+ ExternalProject_Add(OpenSubdiv
+     GIT_REPOSITORY https://github.com/PixarAnimationStudios/OpenSubdiv
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 8ffa2b6566be10209529d7a0d1db02a0796b160c # v3_5_0
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -125,6 +139,8 @@ set(CHAIN OpenSubdiv)
+ 
+ ExternalProject_Add(OpenEXR
+     GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/openexr
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 8bc3741131db146ad08a5b83af9e6e48f0e94a03 # v2.5.7
+     PATCH_COMMAND patch IlmBase/Half/CMakeLists.txt ${THIS_DIR}/../Imath_include_paths.patch
+     BUILD_COMMAND make ${JOBS_ARG}
+@@ -150,6 +166,8 @@ set(CHAIN TBB)
+ 
+ ExternalProject_Add(OpenVDB
+     GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/openvdb
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG ab935574cdb25c3df66b068fce2a3b0a74281c54 # v9.1.0
+     PATCH_COMMAND patch -p1 -N < ${THIS_DIR}/OpenVDB.patch || true
+     BUILD_COMMAND make ${JOBS_ARG}
+@@ -164,6 +182,8 @@ set(CHAIN OpenVDB)
+ 
+ ExternalProject_Add(Log4CPlus
+     GIT_REPOSITORY https://github.com/log4cplus/log4cplus
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG REL_2_0_5
+     PATCH_COMMAND patch -p1 -N < ${THIS_DIR}/log4plus-limit-threads.patch || true
+     # prevent make from regenerating autotools files (requires automake), as for CppUnit below
+@@ -190,6 +210,8 @@ set(CHAIN CppUnit)
+ 
+ ExternalProject_Add(Random123
+     GIT_REPOSITORY https://github.com/DEShawResearch/random123
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 726a093cd9a73f3ec3c8d7a70ff10ed8efec8d13 # v1.14.0
+     BUILD_IN_SOURCE 1
+     CONFIGURE_COMMAND ""
+@@ -212,6 +234,8 @@ set(CHAIN ISPC)
+ 
+ ExternalProject_Add(embree
+     GIT_REPOSITORY https://github.com/embree/embree
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 341ef8c45d1ae072ead1ab65cd76e88b03d9302c # v4.2.0
+     PATCH_COMMAND patch -p1 -N < ${THIS_DIR}/Embree.patch || true
+     BUILD_IN_SOURCE 1
+@@ -233,6 +257,8 @@ set(CHAIN embree)
+ 
+ ExternalProject_Add(OpenColorIO
+     GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/OpenColorIO
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 056b7b0cb0d087961e9dba75104820e44faf52a1 # v2.0.2
+     BUILD_COMMAND ${CMAKE_COMMAND} -E env ${POLICY_MIN_ENV} make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -263,6 +289,8 @@ set(CHAIN TIFF)
+ 
+ ExternalProject_Add(JPEGTurbo
+     GIT_REPOSITORY https://github.com/libjpeg-turbo/libjpeg-turbo
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG bb3d325624526c91646bb9af9578d7198c082d51 # 2.0.1
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -274,6 +302,8 @@ set(CHAIN JPEGTurbo)
+ 
+ ExternalProject_Add(pybind11
+     GIT_REPOSITORY https://github.com/pybind/pybind11
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG a2e59f0e7065404b44dfe92a28aca47ba1378dc4 # v2.13.6
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -286,6 +316,8 @@ set(CHAIN pybind11)
+ 
+ ExternalProject_Add(OpenImageIO
+     GIT_REPOSITORY https://github.com/OpenImageIO/oiio
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 331a323468928c8017ad048b26d47c4e57a724a7 # 2.3.20.0
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
+@@ -313,24 +345,28 @@ ExternalProject_Add(OpenImageDenoise
+ )
+ set(CHAIN OpenImageDenoise)
+ 
+-ExternalProject_Add(qt5
+-    GIT_REPOSITORY https://code.qt.io/qt/qt5.git
+-    GIT_SUBMODULES_RECURSE false
+-    GIT_SHALLOW true
+-    GIT_TAG 5bd237e89469a032ac9d4d33fcd3896897d6d245 # 5.12.12
+-    GIT_SUBMODULES qtbase qtscript
+-    PATCH_COMMAND patch -Ni ${THIS_DIR}/Qt5.patch || true
+-    CONFIGURE_COMMAND ./configure -prefix ${InstallRoot} -confirm-license -opensource -no-egl -nomake examples -nomake tests QMAKE_APPLE_DEVICE_ARCHS=arm64 
+-    BUILD_COMMAND make ${JOBS_ARG}
+-    BUILD_IN_SOURCE 1
+-    INSTALL_COMMAND make install
+-    DEPENDS ${CHAIN}
+-)
+-set(CHAIN qt5)
++if(NOT SKIP_QT)
++    ExternalProject_Add(qt5
++        GIT_REPOSITORY https://code.qt.io/qt/qt5.git
++        GIT_SUBMODULES_RECURSE false
++        GIT_SHALLOW true
++        GIT_TAG 5bd237e89469a032ac9d4d33fcd3896897d6d245 # 5.12.12
++        GIT_SUBMODULES qtbase qtscript
++        PATCH_COMMAND patch -Ni ${THIS_DIR}/Qt5.patch || true
++        CONFIGURE_COMMAND ./configure -prefix ${InstallRoot} -confirm-license -opensource -no-egl -nomake examples -nomake tests QMAKE_APPLE_DEVICE_ARCHS=arm64 
++        BUILD_COMMAND make ${JOBS_ARG}
++        BUILD_IN_SOURCE 1
++        INSTALL_COMMAND make install
++        DEPENDS ${CHAIN}
++    )
++    set(CHAIN qt5)
++endif()
+ 
+ if(NOT NO_USD)
+     ExternalProject_Add(USD
+         GIT_REPOSITORY https://github.com/PixarAnimationStudios/USD
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+         GIT_TAG 0c7b9a95f155c221ff7df9270a39a52e3b23af8b # v22.11
+         PATCH_COMMAND pwd && patch -Ni ${THIS_DIR}/USD.patch || true
+         BUILD_COMMAND make ${JOBS_ARG}
+@@ -379,6 +415,8 @@ set(CHAIN libuuid)
+ 
+ ExternalProject_Add(OpenSSL
+     GIT_REPOSITORY https://github.com/openssl/openssl.git
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     # GIT_TAG a92271e03a8d0dee507b6f1e7f49512568b2c7ad # 3.1.0 - contains a bug on Apple Silicon
+     GIT_TAG 31157bc0b46e04227b8468d3e6915e4d0332777c # 3.0.8
+     CONFIGURE_COMMAND ./Configure darwin64-arm64 --prefix=${InstallRoot} --openssldir=${InstallRoot} -rpath ${InstallRoot}/lib
+@@ -420,6 +458,8 @@ set(CHAIN FreeType)
+ 
+ ExternalProject_Add(GLFW
+     GIT_REPOSITORY https://github.com/glfw/glfw
++    GIT_SHALLOW TRUE
++    GIT_PROGRESS TRUE
+     GIT_TAG 3.4
+     BUILD_COMMAND make ${JOBS_ARG}
+     CMAKE_ARGS
