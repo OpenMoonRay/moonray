@@ -392,7 +392,14 @@ ToonBsdfLobe::eval(const BsdfSlice &slice,
     float cosThetaWi = dot(N, wi);
 
     if (pdf != NULL) {
-        *pdf = max(cosThetaWi, 0.0f) * sOneOverPi;
+        // Use sEpsilon as the floor rather than 0 for shadow-side directions
+        // (cosThetaWi <= 0).  A zero pdf would cause isSampleInvalid() to
+        // discard the light sample entirely, suppressing the shadow-zone ramp
+        // contribution added in MOONSHINE-2049.  This lobe never
+        // importance-samples the back hemisphere, so a near-zero positive pdf
+        // is semantically correct: it gives the light sample near-unity MIS
+        // weight for those directions, which is the desired behavior.
+        *pdf = max(cosThetaWi, sEpsilon) * sOneOverPi;
     }
 
     // Note: we assume this lobe has been setup with a OneMinus*Fresnel
