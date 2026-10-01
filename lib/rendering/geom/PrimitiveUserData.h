@@ -8,6 +8,9 @@
 #include <moonray/rendering/shading/PrimitiveAttribute.h>
 #include <scene_rdl2/scene/rdl2/SceneObject.h>
 
+#include <functional>
+#include <string>
+
 namespace moonray {
 namespace geom {
 
@@ -63,6 +66,16 @@ void processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
                           const geom::RateCounts& rates,
                           bool useFirstFrame,
                           bool useSecondFrame);
+
+// Same, but takes the list of UserData objects directly and skips any key for
+// which skipKey returns true
+void processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
+                          const scene_rdl2::rdl2::SceneObjectVector& arbitraryData,
+                          shading::PrimitiveAttributeTable& primitiveAttributeTable,
+                          const geom::RateCounts& rates,
+                          bool useFirstFrame,
+                          bool useSecondFrame,
+                          const std::function<bool(const std::string&)>& skipKey);
 
 } // namespace geom
 } // namespace moonray

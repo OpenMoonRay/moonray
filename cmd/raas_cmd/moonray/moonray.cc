@@ -118,6 +118,10 @@ RaasCommandLineApplication::run()
 
     logInitMessages();
 
+    // Without deltas files the scene is never updated after it is loaded, so
+    // Geometry input data can be freed once the renderer has consumed it.
+    mOptions.setReleaseGeometryInputData(mOptions.getDeltasFiles().empty());
+
     // Create a RenderContext. Since the RenderContext internally holds a
     // ref on the RenderDriver, scope it to this block so it gets destroyed
     // before we call rndr::cleanUpRenderDriver.

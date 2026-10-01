@@ -11,6 +11,7 @@ target_sources(${target}
         TestInterpolator.cc
         TestPrimAttr.cc
         TestPrimUtils.cc
+        TestRdlGeometry.cc
 )
 
 target_link_libraries(${target}
@@ -52,6 +53,28 @@ moonray_dso_simple(rendering_geom_prim_TestMaterial
         Moonray::rendering_geom
         SceneRdl2::scene_rdl2
 )
+
+# TestRdlGeometry compares RdlGeometry with the Rdl*Geometry procedurals it
+# mirrors, so build the real DSOs from their own sources into this test's
+# directory. TEST_DSO keeps them from colliding with the DSO targets of the
+# same names in dso/geometry.
+foreach(dsoName RdlGeometry RdlMesh RdlCurve RdlPoint)
+    if(dsoName STREQUAL "RdlGeometry")
+        set(dsoClass RdlGeometry)
+    else()
+        set(dsoClass ${dsoName}Geometry)
+    endif()
+    moonray_dso_simple(rendering_geom_prim_Test${dsoClass}
+        SKIP_INSTALL
+        TEST_DSO
+        DSO_NAME ${dsoClass}
+        SOURCE_DIR ../../../../../dso/geometry/${dsoName}
+        DEPENDENCIES
+            Moonray::rendering_geom
+            SceneRdl2::render_util
+            SceneRdl2::scene_rdl2
+    )
+endforeach()
 
 add_test(NAME ${target} COMMAND ${target})
 set_tests_properties(${target} PROPERTIES

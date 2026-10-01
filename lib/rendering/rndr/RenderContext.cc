@@ -2476,6 +2476,19 @@ RenderContext::buildGeometryExtensions()
     }
 }
 
+void
+RenderContext::releaseGeometryInputData()
+{
+    // This must wait until both layers have been generated: the same Geometry
+    // can be generated for each of them, and a UserData can be shared by
+    // several Geometries.
+    for (auto it = mSceneContext->beginSceneObject(); it != mSceneContext->endSceneObject(); ++it) {
+        if (scene_rdl2::rdl2::Geometry* geometry = it->second->asA<scene_rdl2::rdl2::Geometry>()) {
+            geometry->releaseInputData();
+        }
+    }
+}
+
 RenderContext::RP_RESULT
 RenderContext::loadGeometries(const rt::ChangeFlag flag)
 {
@@ -2531,6 +2544,10 @@ RenderContext::loadGeometries(const rt::ChangeFlag flag)
         return RP_RESULT::CANCELED;
     }
     mGeometryManager->setChangeFlag(flag);
+
+    if (mOptions.getReleaseGeometryInputData()) {
+        releaseGeometryInputData();
+    }
 
     timer.stop();
 

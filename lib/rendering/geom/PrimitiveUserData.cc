@@ -176,7 +176,24 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
                      bool useFirstFrame,
                      bool useSecondFrame)
 {
-    const scene_rdl2::rdl2::SceneObjectVector& arbitraryData = geometry->get(attributeKey);
+    processArbitraryData(geometry,
+                         geometry->get(attributeKey),
+                         primitiveAttributeTable,
+                         rates,
+                         useFirstFrame,
+                         useSecondFrame,
+                         [](const std::string&) { return false; });
+}
+
+void
+processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
+                     const scene_rdl2::rdl2::SceneObjectVector& arbitraryData,
+                     shading::PrimitiveAttributeTable& primitiveAttributeTable,
+                     const geom::RateCounts& rates,
+                     bool useFirstFrame,
+                     bool useSecondFrame,
+                     const std::function<bool(const std::string&)>& skipKey)
+{
     for (auto sceneObject : arbitraryData) {
         const scene_rdl2::rdl2::UserData* userData = sceneObject->asA<scene_rdl2::rdl2::UserData>();
         if (!userData) {
@@ -184,7 +201,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
         }
         const int explicitRate = userData->getRate();
 
-        if (userData->hasBoolData()) {
+        if (userData->hasBoolData() && !skipKey(userData->getBoolKey())) {
             shading::TypedAttributeKey<scene_rdl2::rdl2::Bool> key(userData->getBoolKey());
 
             // bool vector is a std::deque
@@ -201,7 +218,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
                                                  std::move(data));
         }
 
-        if (userData->hasIntData()) {
+        if (userData->hasIntData() && !skipKey(userData->getIntKey())) {
             shading::TypedAttributeKey<scene_rdl2::rdl2::Int> key(userData->getIntKey());
             scene_rdl2::rdl2::IntVector data = userData->getIntValues();
 
@@ -214,7 +231,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
                                                  std::move(data));
         }
 
-        {
+        if (!skipKey(userData->getFloatKey())) {
             std::vector<scene_rdl2::rdl2::FloatVector> samples;
             if (useFirstFrame && userData->hasFloatData0()) {
                 samples.push_back(userData->getFloatValues0());
@@ -242,7 +259,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
             }
         }
 
-        if (userData->hasStringData()) {
+        if (userData->hasStringData() && !skipKey(userData->getStringKey())) {
             shading::TypedAttributeKey<std::string> key(userData->getStringKey());
             scene_rdl2::rdl2::StringVector data = userData->getStringValues();
             primitiveAttributeTable.addAttribute(key,
@@ -254,7 +271,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
                                                  std::move(data));
         }
 
-        {
+        if (!skipKey(userData->getColorKey())) {
             std::vector<scene_rdl2::rdl2::RgbVector> samples;
             if (useFirstFrame && userData->hasColorData0()) {
                 samples.push_back(userData->getColorValues0());
@@ -282,7 +299,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
             }
         }
 
-        {
+        if (!skipKey(userData->getVec2fKey())) {
             std::vector<scene_rdl2::rdl2::Vec2fVector> samples;
             if (useFirstFrame && userData->hasVec2fData0()) {
                 samples.push_back(userData->getVec2fValues0());
@@ -310,7 +327,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
             }
         }
 
-        {
+        if (!skipKey(userData->getVec3fKey())) {
             std::vector<scene_rdl2::rdl2::Vec3fVector> samples;
             if (useFirstFrame && userData->hasVec3fData0()) {
                 samples.push_back(userData->getVec3fValues0());
@@ -338,7 +355,7 @@ processArbitraryData(const scene_rdl2::rdl2::SceneObject* geometry,
             }
         }
 
-        {
+        if (!skipKey(userData->getMat4fKey())) {
             std::vector<scene_rdl2::rdl2::Mat4fVector> samples;
             if (useFirstFrame && userData->hasMat4fData0()) {
                 samples.push_back(userData->getMat4fValues0());

@@ -143,6 +143,14 @@ public:
     void setGeneratePixelInfo(bool generatePixelInfo) { mGeneratePixelInfo = generatePixelInfo; }
     bool getGeneratePixelInfo() const    { return mGeneratePixelInfo; }
 
+    // Set/get whether to free each Geometry's scene description input data
+    // (see rdl2::Geometry::releaseInputData()) once all geometry has been
+    // generated. Only safe for an application that guarantees the scene is
+    // never updated after it is first rendered, such as the moonray
+    // command-line renderer without deltas files.
+    void setReleaseGeometryInputData(bool release) { mReleaseGeometryInputData = release; }
+    bool getReleaseGeometryInputData() const { return mReleaseGeometryInputData; }
+
     /// Retrieves the input RDL scene file path.
     const std::vector<std::string>& getSceneFiles() const;
 
@@ -270,6 +278,7 @@ private:
     RenderMode mRenderMode;
     FastRenderMode mFastMode;
     bool mGeneratePixelInfo;    // Generally controlled by the application.
+    bool mReleaseGeometryInputData; // Controlled by the application.
     float mRes;
     std::vector<std::string> mSceneFiles;
     std::vector<std::string> mDeltasFiles;

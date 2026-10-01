@@ -619,6 +619,10 @@ private:
     // Reloads procedurals for Geometries and RootShaders when there are changes.
     RP_RESULT loadGeometries(const rt::ChangeFlag);
 
+    // Frees the scene description input data of every Geometry once all of
+    // them have been generated. See RenderOptions::setReleaseGeometryInputData().
+    void releaseGeometryInputData();
+
     // Helper function for conditioning scene variables and other state into a
     // constant, fast to access structure for use within renderer inner loops.
     // If run in simulationMode, that means that we are running a single-pixel render

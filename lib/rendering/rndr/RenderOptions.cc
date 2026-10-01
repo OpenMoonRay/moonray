@@ -122,6 +122,7 @@ RenderOptions::RenderOptions() :
     mRenderMode(RenderMode::PROGRESSIVE),
     mFastMode(FastRenderMode::NORMALS),
     mGeneratePixelInfo(false),
+    mReleaseGeometryInputData(false),
     mRes(0.0f),
     mSceneFiles(),
     mDsoPath(""),
@@ -914,6 +915,7 @@ RenderOptions::show() const
          << "  mRenderMode:" << showRenderMode(mRenderMode) << '\n'
          << "  mFastMode:" << showFastMode(mFastMode) << '\n'
          << "  mGeneratePixelInfo:" << showBool(mGeneratePixelInfo) << '\n'
+         << "  mReleaseGeometryInputData:" << showBool(mReleaseGeometryInputData) << '\n'
          << "  mRes:" << mRes << '\n'
          << scene_rdl2::str_util::addIndent(showVectorString("mSceneFiles", mSceneFiles)) << '\n'
          << scene_rdl2::str_util::addIndent(showVectorString("mDeltasFiles", mDeltasFiles)) << '\n'
