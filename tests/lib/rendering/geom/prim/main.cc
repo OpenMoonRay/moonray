@@ -3,6 +3,7 @@
 
 #include "TestPrimAttr.h"
 #include "TestInterpolator.h"
+#include "TestRdlGeometry.h"
 #include <moonray/rendering/mcrt_common/ThreadLocalState.h>
 #include <scene_rdl2/pdevunit/pdevunit.h>
 
@@ -18,6 +19,7 @@ main(int argc, char *argv[])
 
     CPPUNIT_TEST_SUITE_REGISTRATION(moonray::geom::unittest::TestRenderingPrimAttr);
     CPPUNIT_TEST_SUITE_REGISTRATION(moonray::geom::unittest::TestInterpolator);
+    CPPUNIT_TEST_SUITE_REGISTRATION(moonray::geom::unittest::TestRdlGeometry);
 
     int result = pdevunit::run(argc, argv);
     moonray::mcrt_common::cleanUpTLS();

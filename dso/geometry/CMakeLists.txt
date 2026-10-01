@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 add_subdirectory(RdlCurve)
+add_subdirectory(RdlGeometry)
 add_subdirectory(RdlInstancerGeometry)
 add_subdirectory(RdlMesh)
 add_subdirectory(RdlPoint)
