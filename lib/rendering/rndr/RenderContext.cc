@@ -1902,11 +1902,11 @@ RenderContext::renderPrep(bool allowUnsupportedXPUFeatures, const bool simulatio
     mPathVisualizerManager->setCameraXformWasCached(false);
 
     if (simulationMode) {
-        // If we're in simulation mode, we should always use the initial camera transform
-        // to generate the ray data. This function caches the current camera xform and restores the 
-        // original camera xform. Once the simulation is done, it sets the cached camera xform
+        // If we're in simulation mode, we should always use the path visualizer's camera transform
+        // to generate the ray data. This function caches the current camera xform and replaces it with the 
+        // path visualizer's camera xform. Once the simulation is done, it sets the cached camera xform
         // and a flag to indicate that the scene was updated.
-        resetCameraXform();
+        setSimulationCameraXform();
     }
 
     if (mFirstFrame) {
@@ -1917,9 +1917,6 @@ RenderContext::renderPrep(bool allowUnsupportedXPUFeatures, const bool simulatio
             return RP_RESULT::CANCELED;
         }
         resetShaderStatsAndLogs();  // initialize EventLog to allocate memory for messages
-
-        // Save the initial camera xform so we can restore it, if needed
-        mPathVisualizerManager->setInitialCameraXform(mCamera->get(scene_rdl2::rdl2::Node::sNodeXformKey));
 
         // Call update() on all SceneObjects
         mSceneContext->applyUpdates(mLayer);
@@ -3537,8 +3534,8 @@ RenderContext::parserConfigure()
                 });
     mParser.opt("pathVisMgr", "...command...", "path visualizer manager command",
                 [&](Arg& arg) { return mPathVisualizerManager->getParser().main(arg.childArg()); });
-    mParser.opt("pathVisMgrSetInitCam", "", "set current camera as a pathVis-initCam",
-                [&](Arg& arg) { return setPathVisInitCam(); });
+    mParser.opt("pathVisMgrSetInitCam", "", "set current camera as a pathVis-pvCam",
+                [&](Arg& arg) { return setRecorderCameraXform(); });
     mParser.opt("saveScene", "<filename>", "save scene",
                 [&](Arg& arg) { return saveSceneCommand(arg); });
     mParser.opt("showExecMode", "", "show rendering execMode and the reason why",
@@ -3557,9 +3554,9 @@ RenderContext::parserConfigure()
 }
 
 bool
-RenderContext::setPathVisInitCam()
+RenderContext::setRecorderCameraXform()
 {
-    mPathVisualizerManager->setInitialCameraXform(mCamera->get(scene_rdl2::rdl2::Node::sNodeXformKey));
+    mPathVisualizerManager->setRecorderCameraXform(mCamera->get(scene_rdl2::rdl2::Node::sNodeXformKey));
     return true;
 }
 
@@ -3723,7 +3720,7 @@ RenderContext::forceCameraUpdate()
 }
 
 void
-RenderContext::resetCameraXform()
+RenderContext::setSimulationCameraXform()
 {
     // Cache current camera xform
     mPathVisualizerManager->setCachedCameraXform(mCamera->get(scene_rdl2::rdl2::Node::sNodeXformKey));
@@ -3734,7 +3731,7 @@ RenderContext::resetCameraXform()
     // We then add the offset to the given camera xform to set the corresponding
     // motion transform
     camera->beginUpdate();
-    camera->set(scene_rdl2::rdl2::Node::sNodeXformKey, mPathVisualizerManager->getInitialCameraXform());
+    camera->set(scene_rdl2::rdl2::Node::sNodeXformKey, mPathVisualizerManager->getRecorderCameraXform());
     camera->endUpdate();
     mSceneUpdated = true;
 }
