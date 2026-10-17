@@ -244,8 +244,8 @@ integrateBundled( const uniform PathIntegrator * uniform this,
             setInvalidCullingNormal(&cullingNormal);
 
             // The ray origin has already been moved to the surface intersection point, so we must
-            // explicitly use the origin of render space for this ray query
-            varying Vec3f origin = Vec3f_ctor(0.0f, 0.0f, 0.0f);
+            // reconstruct the original ray origin
+            const varying Vec3f origin = ray.org - ray.tfar * ray.dir;
 
             // No lobe lightsets because this is a primary ray
             varying int lightIdx = LightSet_intersect(pbrTls, visibleLightSet, origin, cullingNormal,
