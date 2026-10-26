@@ -2371,8 +2371,13 @@ BsdfBuilder_addHairRBRDF(
     cif (isOver(combineBehavior)) {
         varying LobeAttenuator * uniform atten = (varying LobeAttenuator * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying HairAttenuator));
+        HairState hairState;
+        HairState_init(&hairState,
+                       getWo(*me.mState),
+                       brdf.mHairDir);
         HairAttenuator_init((varying HairAttenuator * uniform) atten,
                             me.mTls->mArena,
+                            hairState.mHairNorm,
                             fresnel);
 
         stageAttenuator(me, atten);

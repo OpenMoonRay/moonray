@@ -121,8 +121,9 @@ class HairAttenuator : public LobeAttenuator
 {
 public:
     HairAttenuator(scene_rdl2::alloc::Arena *arena,
+                   const scene_rdl2::math::Vec3f& N,
                    Fresnel * fresnel) :
-        LobeAttenuator()
+        LobeAttenuator(N)
     {
         if (fresnel != nullptr) {
             mOneMinusFresnel = arena->allocWithArgs<OneMinusFresnel>(fresnel);
@@ -142,8 +143,18 @@ public:
     BsdfLobe*
     operator() (scene_rdl2::alloc::Arena * arena, BsdfLobe* lobe) const override
     {
-        lobe->setFresnel(mOneMinusFresnel);
-        return lobe;
+        if (lobe->getIsHair()) {
+            lobe->setFresnel(mOneMinusFresnel);
+            return lobe;
+        } else {
+            if (mOneMinusFresnel == nullptr)
+                return lobe;
+
+            // Default BSDF Attenuator
+            lobe = arena->allocWithArgs<UnderBsdfLobe>(lobe, mN);
+            lobe->setFresnel(mOneMinusFresnel);
+            return lobe;
+        }
     }
 };
 

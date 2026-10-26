@@ -62,6 +62,7 @@ typedef LobeAttenuator HairAttenuator;
 void HairAttenuator_init(
         varying HairAttenuator * uniform attenuator,
         uniform Arena * uniform arena,
+        const varying Vec3f& N,
         const varying Fresnel * uniform fresnel);
 
 // For lobes following velvet lobes

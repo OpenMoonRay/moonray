@@ -531,7 +531,7 @@ public:
                 true); // true for reflection, false for transmission
 
         if (mPreventLightCulling) {
-            // Force lobe to be "spherical" to prevent light culling 
+            // Force lobe to be "spherical" to prevent light culling
             // when light sample is on backside
             const shading::BsdfLobe::Type lobeType = shading::BsdfLobe::ALL_DIFFUSE;
             lobe->setType(lobeType);
@@ -1715,7 +1715,9 @@ public:
         }
 
         if (isOver(combineBehavior)) {
+            HairState hairState(mState.getWo(), component.getHairDir());
             HairAttenuator * atten = mTls->mArena->allocWithArgs<HairAttenuator>(mTls->mArena,
+                    hairState.hairNormal(),
                     fresnel);
 
             stageAttenuator(atten);
