@@ -431,12 +431,13 @@ RenderContext::initialize(std::stringstream &initMessages, LoggingConfiguration 
     mRenderStats->logInitializationConfiguration(initMessages);
 
     // MoonRay doesn't raise the open file limit itself; it must be raised in
-    // the environment before launching.
+    // the environment before launching. 65535 is a suggested value for the
+    // purpose of an example ulimit command, not a requirement.
     const rlim_t openFileLimit = getOpenFileLimit();
     if (isOpenFileLimitLow(openFileLimit)) {
         Logger::warn("Max file descriptors (", openFileLimitToString(openFileLimit), ") may be too low; "
                      "geometry and textures may fail to render. "
-                     "Raise the limit (e.g. \"ulimit -n 65536\") before launching MoonRay.");
+                     "Raise the limit (e.g. \"ulimit -Sn 65535\") before launching MoonRay.");
     }
 
     mRenderStats->logInfoEmptyLine();

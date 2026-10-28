@@ -50,7 +50,7 @@ openFileLimitToString(rlim_t openFileLimit)
 bool
 isOpenFileLimitLow(rlim_t openFileLimit)
 {
-    return openFileLimit != RLIM_INFINITY && openFileLimit <= sLowOpenFileLimit;
+    return openFileLimit != RLIM_INFINITY && openFileLimit <= sLowOpenFileLimitWarningThreshold;
 }
 
 bool

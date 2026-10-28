@@ -10,9 +10,12 @@
 namespace moonray {
 namespace rndr {
 
-// Open file limits at or below this are too low for production scenes. It is
+// Open file limits at or below this *may* be too low for production scenes. It is
 // the default soft limit on most Linux distributions (macOS defaults to 256).
-constexpr rlim_t sLowOpenFileLimit = 1024;
+// This is a warning threshold, not a hard limit. MoonRay will still run with
+// a lower limit, but may fail to load geometry and textures on large
+// production scenes.
+constexpr rlim_t sLowOpenFileLimitWarningThreshold = 1024;
 
 // Returns the number of files this process may have open at once: the soft
 // RLIMIT_NOFILE limit, further bounded by kern.maxfilesperproc on macOS.
