@@ -26,7 +26,19 @@
 #define MAX_HANDLER_STACK_SIZE      (MAX_EXCL_ACCUM_STACK_SIZE / 3)
 
 // See comments in getFrameUpdateTLS().
-#define MAX_OVERFLOW_POOL_SIZE      4
+//
+// 2026-10-29: raised from 4. TBB can occasionally spawn more threads than the
+// configured pool size (see the Intel TBB forum link in getFrameUpdateTLS()'s
+// comment); each such extra thread consumes one overflow slot. A size of 4 was
+// observed to be insufficient in two very different environments: a 4-vCPU
+// CI runner (MNRY_ASSERT_REQUIRE(overflowIdx < MAX_OVERFLOW_POOL_SIZE) firing
+// in moonray_rendering_pbr_tests under a debug build) and a 128-thread
+// (Threadripper PRO 5995WX) workstation. The actual overflow count appears to
+// be a modest, roughly-constant TBB scheduling artifact rather than scaling
+// with core count, but 4 left effectively no margin. Raised to 64 for
+// headroom; cost is trivial (just pointer-sized array slots, populated
+// lazily).
+#define MAX_OVERFLOW_POOL_SIZE      64
 
 // Mimic depth first code flow in bundled mode by forcing all queue sizes to 1.
 // The will ensure that as soon as an entry is added, the queue will get flushed,
