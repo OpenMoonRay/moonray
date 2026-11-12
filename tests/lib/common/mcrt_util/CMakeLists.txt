@@ -14,16 +14,11 @@ target_sources(${target}
         test_wait.cc
 )
 
-if (NOT IsDarwinPlatform)
-    set(PlatformSpecificLibs atomic)
-endif()
-
 target_link_libraries(${target}
     PRIVATE
         Moonray::common_mcrt_util
         pthread
         SceneRdl2::pdevunit
-        ${PlatformSpecificLibs}
 )
 
 # Set standard compile/link options

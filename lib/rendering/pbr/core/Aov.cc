@@ -3481,7 +3481,8 @@ LightAovs::materialAovEventTransition(pbr::TLState *pbrTls, int lpeStateId, int 
 }
 
 int
-LightAovs::subsurfaceEventTransition(pbr::TLState *pbrTls, int lpeStateId, const shading::Bsdf &bsdf) const
+LightAovs::subsurfaceEventTransition(pbr::TLState *pbrTls, int lpeStateId, const shading::Bsdf &bsdf,
+                                      const shading::BsdfLobe *currentLobe) const
 {
     MNRY_ASSERT(mFinalized);
     if (!hasEntries()) return -1;
@@ -3498,9 +3499,16 @@ LightAovs::subsurfaceEventTransition(pbr::TLState *pbrTls, int lpeStateId, const
         "subsurface event requires Bssrdf or VolumeSubsurface");
 
     // labels
-    const int labelId = (bssrdf != nullptr) ?
-        computeScatterEventLabelId(bsdf, bssrdf) :
-        computeScatterEventLabelId(bsdf, volumeSubsurface);
+    int labelId;
+    if (currentLobe != nullptr) {
+        // Use the encoded LPE label of the lobe this event came from, so that a bsdf with
+        // multiple subsurface components resolves to the right one (fallback path still uses bsdf.getBssrdf(0)).
+        labelId = computeScatterEventLabelId(bsdf, currentLobe);
+    } else {
+        labelId = (bssrdf != nullptr) ?
+            computeScatterEventLabelId(bsdf, bssrdf) :
+            computeScatterEventLabelId(bsdf, volumeSubsurface);
+    }
 
     // TODO: we don't really have a subsurface event in our machine
     // RIS uses <TD> to indicate the start of a subsurface event, we'll

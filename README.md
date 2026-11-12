@@ -4,4 +4,3 @@ Policies concerning [Governance](https://github.com/OpenMoonRay/openmoonray/blob
 This repository implements the MoonRay render engine and the moonray command-line renderer.
 The code is comprised of roughly 20 libraries. moonray also contains a set of basic scene object (shader) plugins.
 
-

@@ -33,6 +33,10 @@ struct UsdUVTexture
     const uniform UDIM_TEXTURE_Data * uniform mUdimTexture;
     uniform Color mFatalColor;
 
+    // Row-major 2x2 Jacobian mapping the state's st derivatives to derivatives of
+    // this shader's st input.  Zero when the input isn't a recognized "st" chain.
+    uniform float mStJacobian[4];
+
     uniform StaticUsdUVTextureData* uniform mUsdUVTextureDataPtr;
 };
 ISPC_UTIL_EXPORT_UNIFORM_STRUCT_TO_HEADER(UsdUVTexture);
@@ -53,16 +57,20 @@ sample(const uniform Map* uniform map,
     const Vec2f uv = evalAttrSt(map, tls, state);
     varying Vec2f st = uv;
 
-    float dsdx, dtdx, dsdy, dtdy;
-    dsdx = dsdy = dtdx = dtdy = 0.0f; // scalar mode also sets these to zero
+    const uniform float * uniform J = me->mStJacobian;
+    const varying float dsdx = J[0] * getdSdx(state) + J[1] * getdTdx(state);
+    const varying float dtdx = J[2] * getdSdx(state) + J[3] * getdTdx(state);
+    const varying float dsdy = J[0] * getdSdy(state) + J[1] * getdTdy(state);
+    const varying float dtdy = J[2] * getdSdy(state) + J[3] * getdTdy(state);
+
+    // Flipping t reverses its direction of change, so negate its derivatives.
+    // Udim tiling only translates st, so the same derivatives apply to both paths.
+    float derivatives[4] = { dsdx, -dtdx, dsdy, -dtdy };
 
     varying Col4f tx;
     if (me->mTexture) {
-        // Invert t coord.
+        // Flip the t coordinate about 0.5.
         st.y = 1.0 - st.y;
-
-        // Set and scale derivatives.
-        float derivatives[4] = { dsdx, -dtdx, dsdy, -dtdy };
 
         tx = BASIC_TEXTURE_sample(me->mTexture,
                                   tls,
@@ -82,11 +90,8 @@ sample(const uniform Map* uniform map,
         st.x = st.x - (int)st.x;
         st.y = st.y - (int)st.y;
 
-        // Invert t coord.
+        // Flip the t coordinate about 0.5.
         st.y = 1.0 - st.y;
-
-        // Set and scale derivatives.
-        float derivatives[4] = { dsdx, -dtdx,dsdy, -dtdy };
 
         tx = UDIM_TEXTURE_sample(me->mUdimTexture,
                                  tls,
@@ -121,4 +126,3 @@ sample(const uniform Map* uniform map,
 }
 
 DEFINE_MAP_SHADER(UsdUVTexture, sample)
-

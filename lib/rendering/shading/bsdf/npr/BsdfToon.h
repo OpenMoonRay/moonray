@@ -174,10 +174,12 @@ public:
                  const float* rampPositions,
                  const ispc::RampInterpolatorMode* rampInterpolators,
                  const scene_rdl2::math::Color* rampColors,
-                 const bool extendRamp) :
+                 const bool extendRamp,
+                 const int version = 1) :
         LambertBsdfLobe(N, albedo, true),
         mExtendRamp(extendRamp),
-        mRampInputScale(rampInputScale)
+        mRampInputScale(rampInputScale),
+        mVersion(version)
     {
         mRampControl.init(numRampPoints, rampPositions, rampColors, rampInterpolators,
                           ispc::COLOR_RAMP_CONTROL_SPACE_RGB);
@@ -193,6 +195,7 @@ private:
     ColorRampControl mRampControl;
     bool mExtendRamp;
     float mRampInputScale;
+    int mVersion;  // 1 = legacy 1/(2*pi) norm ("ramp"), 2 = fixed 1/pi norm ("ramp_v2")
 };
 
 

@@ -10,11 +10,67 @@
 #include <moonray/rendering/pbr/core/Util.h>
 #include <moonray/rendering/pbr/lightfilter/CookieLightFilter_v2_ispc_stubs.h>
 
+#include <scene_rdl2/common/math/ReferenceFrame.h>
+
 namespace moonray {
 namespace pbr{
 
 using namespace scene_rdl2;
 using namespace scene_rdl2::math;
+
+namespace {
+
+// UV coordinates are nudged this far off the [0,1] boundary before a texture
+// lookup so the bilinear/CDF sampler never indexes one past the edge texel,
+// which would return a NaN.  Applied both at the latlong poles and at the
+// planar projection edges.
+constexpr float sUvEdgeMin = 0.0005f;
+constexpr float sUvEdgeMax = 1.0f - sUvEdgeMin;
+
+// Map a projector-local direction to y-up latlong UVs.
+// offset is tangent-plane blur jitter; applying it before the latlong mapping
+// keeps blur angularly isotropic and pole-safe.
+// NOTE: Keep this in sync with
+// CookieLightFilter_v2.ispc (cookieLatlongUv).
+finline Vec2f
+cookieLatlongUv(const Vec3f& localP, const Vec2f& blurOffset)
+{
+    // Guard degenerate directions so we never emit NaN UVs.
+    float len = length(localP);
+    Vec3f dir = (len > 0.f && finite(len)) ?
+        localP * (1.0f / len) : Vec3f(0.0f, 0.0f, -1.0f);
+
+    if (blurOffset.x != 0.f || blurOffset.y != 0.f) {
+        ReferenceFrame frame(dir);
+        dir = normalize(dir + frame.getX() * blurOffset.x + frame.getY() * blurOffset.y);
+    }
+
+    float theta = scene_rdl2::math::atan2(scene_rdl2::math::sqrt(dir.x*dir.x + dir.z*dir.z), dir.y);
+    float phi = scene_rdl2::math::atan2(dir.z, dir.x);
+
+    float u = phi * sOneOverTwoPi;
+    float v = 1.0f - (theta * sOneOverPi);
+
+    // Wrap phi into [0, 1); atan2 returns [-pi, pi] so u starts in [-0.5, 0.5].
+    if (u < 0.0f) {
+        u += 1.0f;
+    }
+
+    if (!finite(u) || !finite(v)) {
+        u = 0.0f;
+        v = 0.5f;
+    }
+
+    // Keep lookups off the exact boundary (most importantly v at the poles).
+    u = clamp(u, 0.0f, sUvEdgeMax);
+    v = clamp(v, sUvEdgeMin, sUvEdgeMax);
+
+    MNRY_ASSERT(finite(u));
+    MNRY_ASSERT(finite(v));
+
+    return Vec2f(u, v);
+}
+} // anonymous namespace
 
 bool CookieLightFilter_v2::sAttributeKeyInitialized;
 rdl2::AttributeKey<rdl2::SceneObject*> CookieLightFilter_v2::sProjectorKey;
@@ -233,9 +289,18 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
             Mat4d world2Projector0 = projector2World0.inverse();
             Mat4d world2Projector1 = projector2World1.inverse();
 
-            Mat4d projector2Screen = Mat4d(projector->computeProjectionMatrix(0.f, // t
-                                                                              {-2.f, -2.f, 2.f, 2.f}, // window
-                                                                              0.f)); // interocularOffset
+            Mat4d projector2Screen;
+            if (mRdlLightFilter->get(sProjectorTypeKey) == SPHERICAL_LATLONG) {
+                // Spherical mode ignores the projector camera's projection matrix;
+                // with an identity screen projection mProjectorR2S is just
+                // render-to-projector-local, which the eval() path maps directly
+                // to latlong UVs.  Only the projector's transform is used.
+                projector2Screen = Mat4d(math::one);
+            } else {
+                projector2Screen = Mat4d(projector->computeProjectionMatrix(0.f, // t
+                                                                            {-2.f, -2.f, 2.f, 2.f}, // window
+                                                                            0.f)); // interocularOffset
+            }
 
             mProjectorR2S[0] = Mat4f(render2World * world2Projector0 * projector2Screen);
             mProjectorR2S[1] = Mat4f(render2World * world2Projector1 * projector2Screen);
@@ -278,6 +343,12 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
         case ORTHOGRAPHIC:
             projector2Screen = Mat4d(computeOrthoProjectionMatrix(0.f));
         break;
+        case SPHERICAL_LATLONG:
+            // Spherical mode does not use a screen-space projection matrix; with
+            // an identity projection mProjectorR2S is just render-to-projector-local,
+            // which the eval() path uses to map direction directly to latlong UVs.
+            projector2Screen = Mat4d(math::one);
+        break;
         default:
             MNRY_ASSERT(false);
         }
@@ -292,6 +363,8 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
         mProjectorDir[0] = -projector2Render0.row2().toVec3();
         mProjectorDir[1] = -projector2Render1.row2().toVec3();
     }
+
+    mProjectorType = mRdlLightFilter->get<rdl2::Int>(sProjectorTypeKey);
 
     mBlurNearDistance = mRdlLightFilter->get<rdl2::Float>(sBlurNearDistanceKey);
     mBlurMidpoint = mRdlLightFilter->get<rdl2::Float>(sBlurMidpointKey);
@@ -354,6 +427,11 @@ CookieLightFilter_v2::update(const LightFilterMap& /*lightFilters*/,
 bool
 CookieLightFilter_v2::canIlluminate(const CanIlluminateData& data) const
 {
+    if (mProjectorType == SPHERICAL_LATLONG) {
+        // Spherical mode covers all directions; nothing is culled.
+        return true;
+    }
+
     Vec3f projectorPos = lerp(mProjectorPos[0], mProjectorPos[1], data.time);
     Vec3f projectorDir = lerp(mProjectorDir[0], mProjectorDir[1], data.time);
     Vec3f shadingVec = data.shadingPointPosition - projectorPos;
@@ -386,7 +464,9 @@ CookieLightFilter_v2::eval(const EvalData& data) const
     Vec3f shadingVec = data.shadingPointPosition - projectorPos;
     float distanceToProjector = length(shadingVec);
 
-    if (dot(shadingVec, projectorDir) < 0.f) {
+    const bool spherical = (mProjectorType == SPHERICAL_LATLONG);
+
+    if (!spherical && dot(shadingVec, projectorDir) < 0.f) {
         // The shading point is behind the projector, we don't need to evaluate the
         // map shader.
         switch (mOutsideProjection) {
@@ -399,16 +479,28 @@ CookieLightFilter_v2::eval(const EvalData& data) const
         }
     }
 
-    // We need the screen space position of the render space point.
-    Vec3f screenP0 = transformH(mProjectorR2S[0], data.shadingPointPosition);
-    Vec3f screenP1 = transformH(mProjectorR2S[1], data.shadingPointPosition);
-    Vec3f screenP = lerp(screenP0, screenP1, data.time);
+    Vec3f screenP(0.f, 0.f, 1.f);
+    Vec3f sphericalLocalP(0.f, 0.f, 1.f);
+    if (spherical) {
+        // Keep the shading point in the projector's local space; the latlong UV
+        // (with blur jitter) is computed below once the filter radius is known.
+        // In spherical mode mProjectorR2S has an identity screen projection, so it
+        // maps render space straight to projector-local space.
+        Vec3f localP0 = transformPoint(mProjectorR2S[0], data.shadingPointPosition);
+        Vec3f localP1 = transformPoint(mProjectorR2S[1], data.shadingPointPosition);
+        sphericalLocalP = lerp(localP0, localP1, data.time);
+    } else {
+        // We need the screen space position of the render space point.
+        Vec3f screenP0 = transformH(mProjectorR2S[0], data.shadingPointPosition);
+        Vec3f screenP1 = transformH(mProjectorR2S[1], data.shadingPointPosition);
+        screenP = lerp(screenP0, screenP1, data.time);
 
-    // Right now we are in screen space where (0, 0) is the center of the projection.
-    // However, for maps, the center is (0.5, 0.5) and we want the map centered
-    // in the center of the projection.  So we need to add an 0.5 offset.
-    screenP.x += 0.5f;
-    screenP.y += 0.5f;
+        // Right now we are in screen space where (0, 0) is the center of the projection.
+        // However, for maps, the center is (0.5, 0.5) and we want the map centered
+        // in the center of the projection.  So we need to add an 0.5 offset.
+        screenP.x += 0.5f;
+        screenP.y += 0.5f;
+    }
 
     // Based on the distance to the projector, we interpolate the filter radius
     // depending on whether it is in the near/mid/far interval.
@@ -459,16 +551,33 @@ CookieLightFilter_v2::eval(const EvalData& data) const
         MNRY_ASSERT(false);
     }
 
-    Vec2f st(screenP.x + offset.x, screenP.y + offset.y);
+    Vec2f st;
 
-    if (st.x < 0.f || st.x > 1.f ||
-        st.y < 0.f || st.y > 1.f) {
-        switch (mOutsideProjection) {
-        case BLACK:
-            return Color(0.f);
-        case WHITE:
-            return Color(1.f);
+    if (spherical) {
+        // Apply the blur by perturbing the sampling direction on the sphere
+        // (see cookieLatlongUv), which is angularly isotropic and pole-safe.
+        st = cookieLatlongUv(sphericalLocalP, offset);
+
+    } else {
+        // Planar case just adds offset directly and checks bounds.
+        st = Vec2f(screenP.x + offset.x, screenP.y + offset.y);
+
+        if (!finite(st.x) || !finite(st.y) ||
+            st.x < 0.f || st.x > 1.f ||
+            st.y < 0.f || st.y > 1.f) {
+
+            switch (mOutsideProjection) {
+            case BLACK:
+                return Color(0.f);
+            case WHITE:
+                return Color(1.f);
+            default:
+                return Color(0.f);
+            }
         }
+
+        st.x = clamp(st.x, sUvEdgeMin, sUvEdgeMax);
+        st.y = clamp(st.y, sUvEdgeMin, sUvEdgeMax);
     }
 
     // Lookup the map value using the displaced screen space position. When the

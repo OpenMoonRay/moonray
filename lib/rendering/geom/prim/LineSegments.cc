@@ -263,7 +263,7 @@ LineSegments::postIntersect(mcrt_common::ThreadLocalState &tls,
     const scene_rdl2::rdl2::Geometry* geometry = intersection.getGeometryObject();
     MNRY_ASSERT(geometry != nullptr);
     if (geometry->getRayEpsilon() <= 0.0f) {
-        // Use the 1.5 times the curve radius as the next ray epsilon hint.
+        // Use 1.5 times the curve radius as the next ray epsilon hint.
         // This lets shadow and continuation rays escape
         // the intersected hair, instead of self-intersecting.
         float curveRadius = cv[0].w * (1.0f - ray.u) + cv[1].w * ray.u;

@@ -84,7 +84,7 @@ target_link_libraries(${component}
         ${PROJECT_NAME}::statistics
         JPEG::JPEG
         OpenImageIO::OpenImageIO
-        OpenVDB::OpenVDB
+        OpenVDB::openvdb
 )
 
 add_dependencies(${component} ${objLib})

@@ -24,7 +24,7 @@ if(MOONRAY_USE_OPTIX)
         PROPERTIES
             CUDA_PTX_COMPILATION ON
             CUDA_ARCHITECTURES 75
-            CUDA_STANDARD 11
+            CUDA_STANDARD 14
     )
 
     target_compile_options(${optixLib}

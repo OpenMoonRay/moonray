@@ -531,7 +531,7 @@ public:
                 true); // true for reflection, false for transmission
 
         if (mPreventLightCulling) {
-            // Force lobe to be "spherical" to prevent light culling 
+            // Force lobe to be "spherical" to prevent light culling
             // when light sample is on backside
             const shading::BsdfLobe::Type lobeType = shading::BsdfLobe::ALL_DIFFUSE;
             lobe->setType(lobeType);
@@ -572,13 +572,10 @@ public:
                 component.getTint(),
                 false); // true for reflection, false for transmission
 
-        if (mPreventLightCulling) {
-            // Force lobe to be "spherical" to prevent light culling
-            // when light sample is on backside
-            const shading::BsdfLobe::Type lobeType = shading::BsdfLobe::ALL_DIFFUSE;
-            lobe->setType(lobeType);
-            lobe->setIsSpherical(true);
-        }
+        // Note: preventLightCulling is intentionally NOT applied to BTDF lobes.
+        // A diffuse transmission lobe uses a negated normal to sample the back
+        // hemisphere. Overriding its type to ALL_DIFFUSE would cause it to appear
+        // as a reflection lobe, breaking normal AOV computations.
 
         scene_rdl2::math::Color scale(weight);
 
@@ -1718,7 +1715,9 @@ public:
         }
 
         if (isOver(combineBehavior)) {
+            HairState hairState(mState.getWo(), component.getHairDir());
             HairAttenuator * atten = mTls->mArena->allocWithArgs<HairAttenuator>(mTls->mArena,
+                    hairState.hairNormal(),
                     fresnel);
 
             stageAttenuator(atten);
@@ -1920,7 +1919,8 @@ public:
             component.getRampPositions(),
             component.getRampInterpolators(),
             component.getRampColors(),
-            component.getExtendRamp());
+            component.getExtendRamp(),
+            component.getVersion());
 
         if (mPreventLightCulling) {
             // Force lobe to be "spherical" to prevent culling
@@ -2012,6 +2012,7 @@ public:
                 component.getIndirectReflectionsIntensity(),
                 fresnel);
         lobe->setFresnel(fresnel);
+        lobe = handleIridescence(lobe, component.getIridescence());
 
         if (isUnder(combineBehavior)) {
             // account for the non-dielectric lobes above
@@ -2076,6 +2077,7 @@ public:
                                                  false, // is conductor
                                                  weight,
                                                  lobe);
+        lobe = handleIridescence(lobe, component.getIridescence());
 
         if (isUnder(combineBehavior)) {
             // account for the non-dielectric lobes above

@@ -91,12 +91,11 @@ variants = [
     [   # variant 6
         'os-rocky-9',
         'opt_level-optdebug',
-        'refplat-vfx2022.0',
-        'openimageio-2.3.20.0.x',
-        'gcc-9.3.x.1',
-        'openvdb-9',
-        'zlib-1.2.11.x',
-        'opensubdiv-3.5.0.x.0'
+        'refplat-vfx2026.0',
+        'openimageio-3.1',
+        'gcc-14.2.x',
+        'openvdb-13',
+        'zlib-1.2.11.x'
     ],
 ]
 
@@ -110,7 +109,7 @@ for i, variant in enumerate(variants):
 requires = [
     'amorphous',
     'boost',
-    'cuda-12.1.0.x',
+    'cuda-12.9.1.x',
     'embree-4.2.0.x',
     'imath-3',
     'mcrt_denoise-7.2',
@@ -127,7 +126,7 @@ private_build_requires = [
     'cmake_modules-2.0',
     'cppunit',
     'ispc-1.20.0.x',
-    'python-3.9|3.10|3.11'
+    'python-3.10|3.11|3.13'
 ]
 
 commandstr = lambda i: "cd build/"+os.path.join(*variants[i])+"; ctest -j $(nproc)"

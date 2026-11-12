@@ -574,7 +574,7 @@ public:
 
     std::string getOiioStats(int level) const; // level=1~5
 
-    void resetCameraXform();
+    void setSimulationCameraXform();
     void restoreCachedCameraXform();
 
     /// Sync the camera with rdl2 xform info,
@@ -670,7 +670,7 @@ private:
     void createMeshLightLayer();
 
     void parserConfigure();
-    bool setPathVisInitCam();
+    bool setRecorderCameraXform();
     void setSceneVarTextureCacheSize(const unsigned int sizeMB);
     std::string getSceneVarTextureCacheSize() const;
     bool saveSceneCommand(Arg& arg) const;

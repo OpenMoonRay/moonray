@@ -99,10 +99,6 @@ if(IsDarwinPlatform)
     set_target_properties(${component} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
 endif()
 
-if (NOT IsDarwinPlatform)
-    set(PlatformSpecificLibs atomic)
-endif()
-
 target_link_libraries(${component}
     PUBLIC
         SceneRdl2::common_except
@@ -123,10 +119,9 @@ target_link_libraries(${component}
         ${PROJECT_NAME}::statistics
         ${PROJECT_NAME}::texturing_sampler
         OpenImageIO::OpenImageIO
-        OpenVDB::OpenVDB
+        OpenVDB::openvdb
         TBB::tbb
         embree
-        ${PlatformSpecificLibs}
 )
 
 # If at Dreamworks add a SConscript stub file so others can use this library.

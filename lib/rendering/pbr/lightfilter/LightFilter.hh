@@ -129,7 +129,8 @@ enum CombineMode
 enum CookieProjectorType
 {
     PERSPECTIVE = 0,
-    ORTHOGRAPHIC
+    ORTHOGRAPHIC,
+    SPHERICAL_LATLONG
 };
 
 enum CookieBlurType
@@ -183,6 +184,7 @@ enum CookieOutsideProjection
     HUD_ARRAY(HUD_NAMESPACE(scene_rdl2::math, Mat4f), mProjectorR2S, 2);      \
     HUD_ARRAY(HUD_NAMESPACE(scene_rdl2::math, Vec3f), mProjectorPos, 2);      \
     HUD_ARRAY(HUD_NAMESPACE(scene_rdl2::math, Vec3f), mProjectorDir, 2);      \
+    HUD_MEMBER(int, mProjectorType);                                          \
     HUD_MEMBER(float, mBlurNearDistance);                                     \
     HUD_MEMBER(float, mBlurMidpoint);                                         \
     HUD_MEMBER(float, mBlurFarDistance);                                      \
@@ -201,6 +203,7 @@ enum CookieOutsideProjection
     HUD_VALIDATE(CookieLightFilter_v2, mProjectorR2S);                        \
     HUD_VALIDATE(CookieLightFilter_v2, mProjectorPos);                        \
     HUD_VALIDATE(CookieLightFilter_v2, mProjectorDir);                        \
+    HUD_VALIDATE(CookieLightFilter_v2, mProjectorType);                       \
     HUD_VALIDATE(CookieLightFilter_v2, mBlurNearDistance);                    \
     HUD_VALIDATE(CookieLightFilter_v2, mBlurMidpoint);                        \
     HUD_VALIDATE(CookieLightFilter_v2, mBlurFarDistance);                     \

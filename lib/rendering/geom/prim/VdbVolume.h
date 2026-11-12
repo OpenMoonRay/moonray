@@ -32,6 +32,12 @@
 #include <openvdb/tools/RayIntersector.h>
 #include <openvdb/tools/VelocityFields.h>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <memory>
+#include <new>
+
 namespace moonray {
 namespace geom {
 
@@ -45,7 +51,8 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
                                 const GridType& emissionGrid,
                                 const scene_rdl2::math::Mat4f (&renderToPrim)[2],
                                 const std::vector<float>& values,
-                                const scene_rdl2::rdl2::VolumeShader* volumeShader)
+                                const scene_rdl2::rdl2::VolumeShader* volumeShader,
+                                float emissionSampleRate)
 {
     shading::TLState *tls = mcrt_common::getFrameUpdateTLS()->mShadingTls.get();
 
@@ -67,8 +74,21 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
             bbox.expand(bound);
         }
     }
+
+    // No finite positive emission was found, so there is no meaningful importance
+    // distribution to build from this grid.
+    if (bbox.empty()) {
+        return nullptr;
+    }
+
     openvdb::Coord pMin = bbox.min();
     openvdb::Coord dim = bbox.dim();
+
+    if (dim[0] <= 0 || dim[1] <= 0 || dim[2] <= 0) {
+        rdlGeometry->warn("Emission grid has invalid bounds for importance sampling; "
+                          "falling back to coarse bounding-box sampling.");
+        return nullptr;
+    }
 
     // TODO: fix the dual usage of VdbVolume's mPrimToRender matrices, then the inversions done here won't be needed
     scene_rdl2::math::Mat4f primToRender[2];
@@ -87,9 +107,22 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
 
     // We must pick a single representative voxel volume - interpolate halfway between the 2 matrices
     float voxelVolume = scene_rdl2::math::lerp(indexToRender[0], indexToRender[1], 0.5f).det();
-    float invUnitVolume = 1.0f / voxelVolume;
 
-    scene_rdl2::math::Vec3i res(dim[0], dim[1], dim[2]);
+    // Apply emission_sample_rate to scale down the histogram resolution.
+    // This trades accuracy for reduced memory usage and faster initialization.
+    scene_rdl2::math::Vec3i res(
+        std::max(1, static_cast<int>(dim[0] * emissionSampleRate)),
+        std::max(1, static_cast<int>(dim[1] * emissionSampleRate)),
+        std::max(1, static_cast<int>(dim[2] * emissionSampleRate)));
+
+    // Scale factor: each histogram bin covers (dim[i]/res[i]) voxels along each axis.
+    const float sx = (float)dim[0] / res[0];
+    const float sy = (float)dim[1] / res[1];
+    const float sz = (float)dim[2] / res[2];
+
+    // invUnitVolume is the inverse of one histogram bin's volume in render space.
+    // A bin covers sx*sy*sz voxels, so its volume = voxelVolume * sx*sy*sz.
+    float invUnitVolume = 1.0f / (voxelVolume * sx * sy * sz);
 
     // This is really subtle. The vdb point sampler transforms the input
     // world coordinates to index space and uses "round" to look up the
@@ -98,29 +131,50 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
     float ty = pMin[1] - 0.5f;
     float tz = pMin[2] - 0.5f;
 
-    scene_rdl2::math::Mat4f distToIndex(1.0f, 0.0f, 0.0f, 0.0f,
-                                        0.0f, 1.0f, 0.0f, 0.0f,
-                                        0.0f, 0.0f, 1.0f, 0.0f,
+    scene_rdl2::math::Mat4f distToIndex(sx  , 0.0f, 0.0f, 0.0f,
+                                        0.0f, sy  , 0.0f, 0.0f,
+                                        0.0f, 0.0f, sz  , 0.0f,
                                         tx  , ty  , tz  , 1.0f);
 
     scene_rdl2::math::Mat4f distToRender[2] = {distToIndex * indexToRender[0],
                                                distToIndex * indexToRender[1]};
 
-    size_t denseResolution = res[0] * res[1] * res[2];
+    const size_t rx = static_cast<size_t>(res[0]);
+    const size_t ry = static_cast<size_t>(res[1]);
+    const size_t rz = static_cast<size_t>(res[2]);
 
-    // check for overflow
-    if (denseResolution != 0 && res[0] != denseResolution / (res[1] * res[2])) {
-        float emissionSampleRate = scene_rdl2::math::clamp(rdlGeometry->get<scene_rdl2::rdl2::Float>("emission_sample_rate"));
+    auto checkedMultiply = [](size_t a, size_t b, size_t& result) -> bool
+        {
+            if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
+                return false;
+            }
+            result = a * b;
+            return true;
+        };
 
+    // Use checked size_t arithmetic to avoid overflow for large sparse grids
+    // (e.g. a 3333x1312x4633 bounding box with few active voxels).
+    size_t denseResolution = 0;
+    if (!checkedMultiply(rx, ry, denseResolution) ||
+        !checkedMultiply(denseResolution, rz, denseResolution)) {
+        rdlGeometry->warn("Emission grid histogram is too large to build; ",
+                          "please reduce \"emission_sample_rate\".");
+        return nullptr;
+    }
+
+    // If the histogram is still too large even after applying emission_sample_rate, warn.
+    if (denseResolution > (size_t)std::numeric_limits<int>::max()) {
         // The cube root of 2 ^ 31 is about 1290.
         float factor = 3.f * 1290.f / (res[0] + res[1] + res[2]);
 
-        // round to nearest 2 decimal
-        float suggestedSampleRate = int(factor * emissionSampleRate * 100) / 100.f;
+        // Round to nearest 2 decimals.
+        float suggestedSampleRate = std::round(factor * emissionSampleRate * 100.0f) / 100.0f;
+        suggestedSampleRate = scene_rdl2::math::clamp(suggestedSampleRate, 0.0f, 1.0f);
 
-        rdlGeometry->warn("Emission grid is too large and caused an integer overflow. "
+        rdlGeometry->warn("Emission grid histogram is too large to build. "
                           "Please set \"emission_sample_rate\" to ", suggestedSampleRate,
-                          " or lower for accurate results.");
+                          " or lower to reduce memory usage; lower values may increase noise.");
+        return nullptr;
     }
 
     auto evalVolumeShader = [&](const openvdb::Coord& coord)->float
@@ -137,15 +191,30 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
                                                                   scene_rdl2::math::Color(1.0f)));
     };
 
-    std::vector<float> histogram(denseResolution, 0.0f);
+    std::vector<float> histogram;
+    try {
+        histogram.assign(denseResolution, 0.0f);
+    } catch (const std::bad_alloc&) {
+        rdlGeometry->warn("Failed to allocate emission histogram; "
+                          "falling back to coarse bounding-box sampling.");
+        return nullptr;
+    }
 
     auto getHistogramIndex = [&](const openvdb::Coord& ijk)->size_t
         {
-            size_t index =
-                (ijk[2] - pMin[2]) * res[0] * res[1] +
-                (ijk[1] - pMin[1]) * res[0] +
-                (ijk[0] - pMin[0]);
-            return index;
+            // Map the voxel's offset inside the emission bbox into the reduced histogram grid.
+            // Each axis is scaled independently, so multiple VDB voxels can collapse into one bin
+            // when emissionSampleRate < 1.
+            const size_t xOffset = static_cast<size_t>(ijk[0] - pMin[0]);
+            const size_t yOffset = static_cast<size_t>(ijk[1] - pMin[1]);
+            const size_t zOffset = static_cast<size_t>(ijk[2] - pMin[2]);
+
+            const size_t bx = scene_rdl2::math::min(rx - 1, xOffset * rx / static_cast<size_t>(dim[0]));
+            const size_t by = scene_rdl2::math::min(ry - 1, yOffset * ry / static_cast<size_t>(dim[1]));
+            const size_t bz = scene_rdl2::math::min(rz - 1, zOffset * rz / static_cast<size_t>(dim[2]));
+
+            const size_t voxelsPerSlice = rx * ry;
+            return bz * voxelsPerSlice + by * rx + bx;
         };
 
     valueIndex = 0;
@@ -172,8 +241,17 @@ computeEmissionDistributionImpl(const scene_rdl2::rdl2::Geometry* rdlGeometry,
             }
         }
     }
-    return std::unique_ptr<EmissionDistribution>(
-        new DenseEmissionDistribution(res, distToRender, invUnitVolume, histogram));
+
+    try {
+        return std::make_unique<DenseEmissionDistribution>(res,
+                                                           distToRender,
+                                                           invUnitVolume,
+                                                           histogram);
+    } catch (const std::bad_alloc&) {
+        rdlGeometry->warn("Failed to build emission importance distribution; "
+                          "falling back to coarse bounding-box sampling.");
+        return nullptr;
+    }
 }
 
 } // end anonymous namespace

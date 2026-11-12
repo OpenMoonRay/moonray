@@ -1398,7 +1398,8 @@ BsdfBuilder_addToonBRDF(
                       brdf.mRampPositions,
                       brdf.mRampInterpolators,
                       brdf.mRampColors,
-                      brdf.mExtendRamp);
+                      brdf.mExtendRamp,
+                      brdf.mVersion);
 
     if (me.mPreventLightCulling) {
         // Force lobe to be "spherical" to prevent culling
@@ -1480,6 +1481,7 @@ BsdfBuilder_addHairToonSpecularBRDF(
                              false,                  // isConductor
                              weight,
                              lobe);
+    lobe = handleIridescence(me, lobe, brdf.mIridescence);
 
     cif (isUnder(combineBehavior)) {
         // account for the non-dielectric lobes above
@@ -1583,6 +1585,7 @@ BsdfBuilder_addToonSpecularBRDF(
                               brdf.mIndirectReflectionsIntensity,
                               fresnel);
     BsdfLobe_setFresnel(lobe, fresnel);
+    lobe = handleIridescence(me, lobe, brdf.mIridescence);
 
     cif (isUnder(combineBehavior)) {
         // account for the non-dielectric lobes above
@@ -1686,13 +1689,10 @@ BsdfBuilder_addLambertianBTDF(
                          btdf.mTint,
                          false); // true for reflection, false for transmission
 
-    if (me.mPreventLightCulling) {
-        // Force lobe to be "spherical" to prevent light culling
-        // when light sample is on backside
-        const uniform BsdfLobeType lobeType = BSDF_LOBE_TYPE_ALL_DIFFUSE;
-        BsdfLobe_setType(lobe, lobeType);
-        BsdfLobe_setIsSpherical(lobe, true);
-    }
+    // Note: preventLightCulling is intentionally NOT applied to BTDF lobes.
+    // A diffuse transmission lobe uses a negated normal to sample the back
+    // hemisphere. Overriding its type to ALL_DIFFUSE would cause it to appear
+    // as a reflection lobe, breaking normal AOV computations.
 
     varying Color scale = Color_ctor(weight);
 
@@ -2371,8 +2371,13 @@ BsdfBuilder_addHairRBRDF(
     cif (isOver(combineBehavior)) {
         varying LobeAttenuator * uniform atten = (varying LobeAttenuator * uniform)
             Arena_alloc(me.mTls->mArena, sizeof(varying HairAttenuator));
+        HairState hairState;
+        HairState_init(&hairState,
+                       getWo(*me.mState),
+                       brdf.mHairDir);
         HairAttenuator_init((varying HairAttenuator * uniform) atten,
                             me.mTls->mArena,
+                            hairState.mHairNorm,
                             fresnel);
 
         stageAttenuator(me, atten);

@@ -8,7 +8,6 @@
 
 #include <moonray/common/mcrt_macros/moonray_static_check.h>
 #include <moonray/rendering/shading/BasicTexture.h>
-#include <moonray/rendering/shading/ColorCorrect.h>
 #include <moonray/rendering/shading/MapApi.h>
 #include <moonray/rendering/shading/UdimTexture.h>
 #include <scene_rdl2/render/util/stdmemory.h>
@@ -18,6 +17,88 @@ using namespace scene_rdl2;
 using namespace scene_rdl2::math;
 
 static ispc::StaticUsdUVTextureData sStaticUsdUVTextureData;
+
+namespace {
+
+bool
+isStPrimvarReader(const scene_rdl2::rdl2::SceneObject *obj)
+{
+    return obj != nullptr &&
+           obj->getSceneClass().getName() == "UsdPrimvarReader_float2" &&
+           obj->get<scene_rdl2::rdl2::String>("varname") == "st";
+}
+
+void
+computeUVTransformMapJacobian(const scene_rdl2::rdl2::SceneObject *stBinding,
+                              float jacobian[4])
+{
+    const scene_rdl2::rdl2::SceneClass &sceneClass = stBinding->getSceneClass();
+    const auto spaceKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Int>("space");
+    const auto scaleKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Vec2f>("scale");
+    const auto offsetKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Vec2f>("offset");
+    const scene_rdl2::rdl2::Int textureSpace = sceneClass.getEnumValue(spaceKey, "texture");
+    if (stBinding->get(spaceKey) != textureSpace ||
+        stBinding->getBinding(scaleKey) || stBinding->getBinding(offsetKey)) {
+        return;
+    }
+
+    // UVTransformMap rotates first, then scales and translates, so J = S * R(theta).
+    const Vec2f &scale = stBinding->get<scene_rdl2::rdl2::Vec2f>(scaleKey);
+    float sinTheta, cosTheta;
+    sincos(deg2rad(stBinding->get<scene_rdl2::rdl2::Float>("rotation_angle")),
+           &sinTheta, &cosTheta);
+    jacobian[0] =  scale.x * cosTheta;
+    jacobian[1] =  scale.x * sinTheta;
+    jacobian[2] = -scale.y * sinTheta;
+    jacobian[3] =  scale.y * cosTheta;
+}
+
+void
+computeUsdTransform2dJacobian(const scene_rdl2::rdl2::SceneObject *stBinding,
+                              float jacobian[4])
+{
+    const scene_rdl2::rdl2::SceneClass &sceneClass = stBinding->getSceneClass();
+    const auto inKey = sceneClass.getAttributeKey<scene_rdl2::rdl2::Rgb>("in");
+    if (!isStPrimvarReader(stBinding->getBinding(inKey))) {
+        return;
+    }
+
+    // UsdTransform2d scales, then rotates and translates, so J = R(theta) * S.
+    const Vec2f &scale = stBinding->get<scene_rdl2::rdl2::Vec2f>("scale");
+    float sinTheta, cosTheta;
+    sincos(deg2rad(stBinding->get<scene_rdl2::rdl2::Float>("rotation")),
+           &sinTheta, &cosTheta);
+    jacobian[0] =  cosTheta * scale.x;
+    jacobian[1] = -sinTheta * scale.y;
+    jacobian[2] =  sinTheta * scale.x;
+    jacobian[3] =  cosTheta * scale.y;
+}
+
+// Row-major 2x2 Jacobian mapping the shading state's st derivatives to derivatives
+// of this shader's st input.  Left zero (which selects the finest mip level) unless
+// the input resolves to the "st" primvar or a recognized texture-space transform.
+void
+computeStJacobian(const scene_rdl2::rdl2::SceneObject *stBinding, float jacobian[4])
+{
+    jacobian[0] = jacobian[1] = jacobian[2] = jacobian[3] = 0.0f;
+
+    if (isStPrimvarReader(stBinding)) {
+        jacobian[0] = jacobian[3] = 1.0f;
+        return;
+    }
+    if (stBinding == nullptr) {
+        return;
+    }
+
+    const std::string &className = stBinding->getSceneClass().getName();
+    if (className == "UVTransformMap") {
+        computeUVTransformMapJacobian(stBinding, jacobian);
+    } else if (className == "UsdTransform2d") {
+        computeUsdTransform2dJacobian(stBinding, jacobian);
+    }
+}
+
+} // namespace
 
 //----------------------------------------------------------------------------
 
@@ -70,6 +151,8 @@ UsdUVTexture::~UsdUVTexture()
 void
 UsdUVTexture::update()
 {
+    computeStJacobian(getBinding(attrSt), mIspc.mStJacobian);
+
     const std::string filename = get(attrFile);
     const std::size_t udimPos = filename.find("<UDIM>");
     const bool areWeAUdim = udimPos != std::string::npos;
@@ -77,16 +160,21 @@ UsdUVTexture::update()
     const scene_rdl2::rdl2::SceneVariables &sv = getSceneClass().getSceneContext()->getSceneVariables();
     mIspc.mFatalColor = asIspc(sv.get(scene_rdl2::rdl2::SceneVariables::sFatalColor));
 
-    // If wrap types are set to the default which uses
-    // the metadata from the file then fall back to "black"
+    // If wrap types are set to the default which uses the metadata from the file
+    // then fall back to a sensible mode.  Udim tiles are independent textures, so a
+    // filter footprint that spills over a tile edge must clamp to the edge texels
+    // (which approximate the neighboring tile) rather than wrap around this tile.
+    const moonray::shading::WrapType defaultWrap = areWeAUdim ?
+        moonray::shading::WrapType::Clamp : moonray::shading::WrapType::Periodic;
+
     moonray::shading::WrapType wrapS = static_cast<moonray::shading::WrapType>(get(attrWrapS));
     if (wrapS == moonray::shading::WrapType::Default) {
-        wrapS = moonray::shading::WrapType::Periodic;
+        wrapS = defaultWrap;
     }
 
     moonray::shading::WrapType wrapT = static_cast<moonray::shading::WrapType>(get(attrWrapT));
     if (wrapT == moonray::shading::WrapType::Default) {
-        wrapT = moonray::shading::WrapType::Periodic;
+        wrapT = defaultWrap;
     }
 
     std::string errorStr;
@@ -174,20 +262,22 @@ UsdUVTexture::sample(const scene_rdl2::rdl2::Map *self,
         return;
     }
 
-    float dsdx, dsdy, dtdx, dtdy;
-
     Vec2f st = evalVec2f(me, attrSt, tls, state);
 
-    // TODO: How do we get input texture coordinates derivatives ?
-    dsdx = dsdy = dtdx = dtdy = 0.0;
+    const float * const jacobian = me->mIspc.mStJacobian;
+    const float dsdx = jacobian[0] * state.getdSdx() + jacobian[1] * state.getdTdx();
+    const float dtdx = jacobian[2] * state.getdSdx() + jacobian[3] * state.getdTdx();
+    const float dsdy = jacobian[0] * state.getdSdy() + jacobian[1] * state.getdTdy();
+    const float dtdy = jacobian[2] * state.getdSdy() + jacobian[3] * state.getdTdy();
+
+    // Flipping t reverses its direction of change, so negate its derivatives.
+    // Udim tiling only translates st, so the same derivatives apply to both paths.
+    float derivatives[4] = { dsdx, -dtdx, dsdy, -dtdy };
 
     Color4 tx;
     if (me->mTexture) {
-        // Invert t coord.
+        // Flip the t coordinate about 0.5.
         st.y = 1.0 - st.y;
-
-        // Set and scale derivatives.
-        float derivatives[4] = { dsdx, -dtdx, dsdy, -dtdy };
 
         // sample the texture
         tx = me->mTexture->sample(tls,
@@ -207,11 +297,8 @@ UsdUVTexture::sample(const scene_rdl2::rdl2::Map *self,
         st.x = st.x - int(st.x);
         st.y = st.y - int(st.y);
 
-        // Invert t coord.
+        // Flip the t coordinate about 0.5.
         st.y = 1.0 - st.y;
-
-        // Set derivatives.
-        float derivatives[4] = { dsdx, -dtdx, dsdy, -dtdy };
 
         // sample the texture
         tx = me->mUdimTexture->sample(tls,
@@ -242,4 +329,3 @@ UsdUVTexture::sample(const scene_rdl2::rdl2::Map *self,
     rgb = rgb * me->get(attrScale) + me->get(attrBias);
     *sample = rgb;
 }
-

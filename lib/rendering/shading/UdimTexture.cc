@@ -14,12 +14,6 @@
 #include <moonray/rendering/mcrt_common/ProfileAccumulatorHandles.h>
 #include <moonray/rendering/texturing/sampler/TextureSampler.h>
 
-#ifdef __ARM_NEON__
-// This works around OIIO including x86 based headers due to detection of SSE
-// support due to sse2neon.h being included elsewhere
-#define __IMMINTRIN_H
-#define __NMMINTRIN_H
-#endif
 #include <OpenImageIO/texture.h>
 
 #include <tbb/blocked_range.h>

@@ -1,4 +1,4 @@
-// Copyright 2023-2024 DreamWorks Animation LLC
+// Copyright 2023-2026 DreamWorks Animation LLC
 // SPDX-License-Identifier: Apache-2.0
 
 //
@@ -48,6 +48,22 @@
 #include <tbb/task_group.h>
 #endif // end TBB_MCRT_THREADPOOL
 
+// Opt-in test (normally commented out): after the first renderPasses() it prints to stderr whether
+// every MCRT thread is pinned to the CPU its TLS expects and runs on the NUMA node of its TLS memory.
+// Only meaningful for moonray's own MCRT thread pool (Linux); it is ignored with the TBB pool.
+//#define DEBUG_CHECK_MCRT_THREAD_PLACEMENT
+#if defined(DEBUG_CHECK_MCRT_THREAD_PLACEMENT) && !defined(TBB_MCRT_THREADPOOL) && !defined(FORCE_SINGLE_THREADED_RENDERING)
+#define MCRT_THREAD_PLACEMENT_CHECK
+#include <scene_rdl2/common/grid_util/NumaUtil.h>
+
+#include <atomic>
+#include <iostream>
+#include <memory>
+#include <sched.h>
+#include <sstream>
+#include <vector>
+#endif // end DEBUG_CHECK_MCRT_THREAD_PLACEMENT
+
 // Debug message display for adaptive sampling stage rendering
 //#define PRINT_DEBUG_MESSAGE_ADAPTIVE_STAGE
 
@@ -87,6 +103,123 @@ verifyNoOutstandingWork(const FrameState &fs)
     return true;
 }
 #endif // end DEBUG
+
+#ifdef MCRT_THREAD_PLACEMENT_CHECK
+struct McrtThreadPlacement
+{
+    bool mValid {false}; // information was properly recorded or not
+    unsigned mTlsIdx {0};
+    size_t mPoolThreadId {0};
+    int mExpectedCpu {-1}; // CPU the TLS expects; -1 when CPU affinity is off
+    int mRunningCpu {-1};
+    size_t mAffinityCpuCount {0}; // CPUs the thread is allowed to run on
+    bool mAffinityHasExpectedCpu {false}; // Whether the thread's affinity mask contains the CPU expected by TLS.
+                                          // false if CPU affinity is disabled
+    unsigned mTlsNumaNodeId {~0u}; // NUMA node of the TLS memory; ~0u when memory affinity is off
+};
+
+void
+recordMcrtThreadPlacement(McrtThreadPlacement& rec,
+                          const unsigned tlsIdx,
+                          const size_t poolThreadId,
+                          const int expectedCpu,
+                          const unsigned tlsNumaNodeId)
+// Called on the MCRT thread itself.
+{
+    rec.mTlsIdx = tlsIdx;
+    rec.mPoolThreadId = poolThreadId;
+    rec.mExpectedCpu = expectedCpu;
+    rec.mTlsNumaNodeId = tlsNumaNodeId;
+    rec.mRunningCpu = ::sched_getcpu(); // current cpuId of this thread
+
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (::sched_getaffinity(0, sizeof(set), &set) == 0) { // get current affinity mask of this thread
+        rec.mAffinityCpuCount = static_cast<size_t>(CPU_COUNT(&set));
+        rec.mAffinityHasExpectedCpu =
+            (expectedCpu >= 0 && expectedCpu < CPU_SETSIZE && CPU_ISSET(expectedCpu, &set));
+    }
+
+    rec.mValid = true; // recorded
+}
+
+void
+showMcrtThreadPlacementCheck(const std::vector<McrtThreadPlacement>& tbl,
+                             const bool cpuAffinityOn,
+                             const bool memAffinityOn)
+{
+    std::unique_ptr<scene_rdl2::grid_util::NumaUtil> numaUtil;
+    try {
+        numaUtil = std::make_unique<scene_rdl2::grid_util::NumaUtil>();
+    } catch (const std::exception& e) {
+        std::cerr << ">> MCRT thread placement check : NumaUtil failed (" << e.what() << "), no NUMA node check\n";
+    }
+    auto numaNodeOfCpu = [&](const int cpuId) -> int {
+        if (!numaUtil || cpuId < 0) return -1;
+        const scene_rdl2::grid_util::NumaNode* node = numaUtil->findNumaNodeByCpuId(static_cast<unsigned>(cpuId));
+        return node ? static_cast<int>(node->getNodeId()) : -1;
+    };
+
+    constexpr size_t maxLines = 32;
+    size_t notRecorded = 0, poolIdMismatch = 0, notPinned = 0, wrongCpu = 0, numaMismatch = 0, problemThreads = 0;
+    std::ostringstream lines;
+    for (const McrtThreadPlacement& rec : tbl) {
+        if (!rec.mValid) {
+            ++notRecorded;
+            ++problemThreads;
+            continue;
+        }
+        const int runningNumaNodeId = numaNodeOfCpu(rec.mRunningCpu);
+        bool problem = false;
+        if (rec.mPoolThreadId != rec.mTlsIdx) {
+            ++poolIdMismatch;
+            problem = true;
+        }
+        if (cpuAffinityOn) {
+            if (rec.mAffinityCpuCount != 1 || !rec.mAffinityHasExpectedCpu) {
+                ++notPinned;
+                problem = true;
+            }
+            if (rec.mRunningCpu != rec.mExpectedCpu) {
+                ++wrongCpu;
+                problem = true;
+            }
+        }
+        if (memAffinityOn && rec.mTlsNumaNodeId != ~0u && runningNumaNodeId >= 0 &&
+            runningNumaNodeId != static_cast<int>(rec.mTlsNumaNodeId)) {
+            ++numaMismatch;
+            problem = true;
+        }
+        if (problem) {
+            if (problemThreads < maxLines) {
+                lines << "  tls:" << rec.mTlsIdx << " poolThread:" << rec.mPoolThreadId
+                      << " expectedCpu:" << rec.mExpectedCpu << " runningCpu:" << rec.mRunningCpu
+                      << " allowedCpuCount:" << rec.mAffinityCpuCount
+                      << " tlsNumaNode:" << static_cast<int>(rec.mTlsNumaNodeId)
+                      << " runningNumaNode:" << runningNumaNodeId << '\n';
+            }
+            ++problemThreads;
+        }
+    }
+
+    std::ostringstream ostr;
+    ostr << ">> MCRT thread placement check {\n"
+         << "  threadTotal:" << tbl.size() << " cpuAffinity:" << (cpuAffinityOn ? "on" : "off")
+         << " memAffinity:" << (memAffinityOn ? "on" : "off") << '\n'
+         << "  notRecorded:" << notRecorded << '\n'
+         << "  poolThreadId != tlsIdx:" << poolIdMismatch << '\n'
+         << "  not pinned to exactly the expected CPU:" << notPinned << '\n'
+         << "  running on a CPU other than the expected one:" << wrongCpu << '\n'
+         << "  running NUMA node != TLS memory NUMA node:" << numaMismatch << '\n'
+         << "  problemThreads:" << problemThreads << (problemThreads == 0 ? " (OK)" : "") << '\n'
+         << lines.str();
+    if (problemThreads > maxLines) {
+        ostr << "  ... " << (problemThreads - maxLines) << " more\n";
+    }
+    ostr << "}\n";
+    std::cerr << ostr.str();
+}
+#endif // end MCRT_THREAD_PLACEMENT_CHECK
 
 } // namespace
 
@@ -128,8 +261,8 @@ RenderDriver::renderPasses(RenderDriver *driver, const FrameState &fs,
     MNRY_ASSERT(mcrt_common::AffinityManager::get()->getCpu());
     std::shared_ptr<mcrt_common::CpuAffinityManager> cpuAff = mcrt_common::AffinityManager::get()->getCpu();
 
-    auto calcCpuIdSequential = [&](size_t threadId) -> size_t { return threadId; };
-    auto calcCpuIdByTbl = [&](size_t threadId) -> size_t { return (cpuAff->getAffinityCpuIdTbl())[threadId]; };
+    auto calcCpuIdSequential = [&](size_t threadId) -> unsigned { return static_cast<unsigned>(threadId); };
+    auto calcCpuIdByTbl = [&](size_t threadId) -> unsigned { return (cpuAff->getAffinityCpuIdTbl())[threadId]; };
     scene_rdl2::ThreadPoolExecutor::CalcCpuIdFunc calcCpuIdFunc = nullptr;
 
     if (cpuAff->getEnableMcrtCpuAffinity()) {
@@ -197,22 +330,54 @@ RenderDriver::renderPasses(RenderDriver *driver, const FrameState &fs,
     }
 
     // Spawn one task for each tbb thread.
+#ifdef MCRT_THREAD_PLACEMENT_CHECK
+    std::vector<McrtThreadPlacement> placementTbl(fs.mNumRenderThreads); // index = TLS index
+#endif // end MCRT_THREAD_PLACEMENT_CHECK
     for (unsigned ithread = 0; ithread < fs.mNumRenderThreads; ++ithread) {
 
-        mcrt_common::ThreadLocalState *topLevelTls = topLevelTlsList + ithread;
+        // Only the task number: with moonray's MCRT thread pool any pinned pool thread may run
+        // any task, so the TLS is chosen inside the task (see below).
+        mcrt_common::ThreadLocalState *enqueueOrderTls = topLevelTlsList + ithread;
 
-        // The topLevelTls pointer must be captured by value to prevent it changing out
+        // The pointer must be captured by value to prevent it changing out
         // from under us as other threads are subsequently spawned.
 
 #ifdef FORCE_SINGLE_THREADED_RENDERING
-        callLambda([&, topLevelTls]()
+        callLambda([&, enqueueOrderTls]()
 #else
-        taskGroup.run([&, topLevelTls]()
+        taskGroup.run([&, enqueueOrderTls]()
 #endif
         {
             double timeStart = scene_rdl2::util::getSeconds(); // get current time
 
             ++numTBBThreads;
+
+            // Use the TLS of the thread we actually run on, not the one that matches the
+            // order in which the task was enqueued.
+            // Even when only a subset of the machine's CPUs is used, with gaps between them, the
+            // thread IDs within the thread pool, the actual CPU IDs to which threads are pinned,
+            // and all aspects of memory allocation within TLS are controlled by
+            // mcrt_common::CpuAffinityManager. Therefore, using the thread ID to identify the
+            // corresponding TLS ensures consistency across all of these components.
+            //
+            // For the TBB pool (Mac) there is no pool thread id, so the TLS follows the task enqueue order.
+            mcrt_common::ThreadLocalState *topLevelTls = enqueueOrderTls;
+#ifndef TBB_MCRT_THREADPOOL
+            const size_t poolThreadId = scene_rdl2::ThreadPoolExecutor::getCurrentThreadId();
+            if (poolThreadId != scene_rdl2::ThreadPoolExecutor::kNotPoolThread) {
+                MNRY_ASSERT(poolThreadId < fs.mNumRenderThreads, "poolThreadId is out of TLS range");
+                topLevelTls = topLevelTlsList + poolThreadId;
+            }
+#endif
+
+#ifdef MCRT_THREAD_PLACEMENT_CHECK
+            if (topLevelTls->mThreadIdx < placementTbl.size()) {
+                const int expectedCpu = cpuAff->getEnableMcrtCpuAffinity()
+                    ? static_cast<int>(cpuAff->mcrtThreadIdToCpuId(topLevelTls->mThreadIdx)) : -1;
+                recordMcrtThreadPlacement(placementTbl[topLevelTls->mThreadIdx], topLevelTls->mThreadIdx,
+                                          poolThreadId, expectedCpu, topLevelTls->mArena.getNumaNodeId());
+            }
+#endif // end MCRT_THREAD_PLACEMENT_CHECK
 
             pbr::TLState *tls = MNRY_VERIFY(topLevelTls->mPbrTls.get());
 
@@ -408,6 +573,17 @@ RenderDriver::renderPasses(RenderDriver *driver, const FrameState &fs,
 
     taskGroup.wait();
 
+#ifdef MCRT_THREAD_PLACEMENT_CHECK
+    {
+        static std::atomic<bool> reported {false}; // renderPasses() runs many times: report once per process
+        if (!reported.exchange(true)) {
+            showMcrtThreadPlacementCheck(placementTbl,
+                                         cpuAff->getEnableMcrtCpuAffinity(),
+                                         mcrt_common::AffinityManager::get()->getMem()->getMemAffinityEnable());
+        }
+    }
+#endif // end MCRT_THREAD_PLACEMENT_CHECK
+
     timingRec.finalizeRenderPasses(); // End record timing : compute average thread timing and other info
     driver->mProgressEstimation.updatePassInfo(timingRec); // update pass info
 
@@ -513,7 +689,9 @@ RenderDriver::renderTiles(RenderDriver *driver,
             params.mLocalAovs = localAovs;
         }
 
+#ifdef PROFILE_ACCUMULATORS_ENABLED
         params.mNonRenderDriverAccumulator = &nonRenderDriverAccumulator;
+#endif // end of PROFILE_ACCUMULATORS_ENABLED
 
         params.mConsistentSamplesPerPixel = fs.mRenderContext->getNumConsistentSamples();
 

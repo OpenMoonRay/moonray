@@ -26,7 +26,33 @@
 #define MAX_HANDLER_STACK_SIZE      (MAX_EXCL_ACCUM_STACK_SIZE / 3)
 
 // See comments in getFrameUpdateTLS().
-#define MAX_OVERFLOW_POOL_SIZE      4
+//
+// 2026-10-29: raised from 4. TBB can occasionally spawn more threads than the
+// configured pool size (see the Intel TBB forum link in getFrameUpdateTLS()'s
+// comment); each such extra thread consumes one overflow slot. A size of 4 was
+// observed to be insufficient in two very different environments: a 4-vCPU
+// CI runner (MNRY_ASSERT_REQUIRE(overflowIdx < MAX_OVERFLOW_POOL_SIZE) firing
+// in moonray_rendering_pbr_tests under a debug build) and a 128-thread
+// (Threadripper PRO 5995WX) workstation. The actual overflow count appears to
+// be a modest, roughly-constant TBB scheduling artifact rather than scaling
+// with core count, but 4 left effectively no margin. Raised to 64 for
+// headroom; cost is trivial (just pointer-sized array slots, populated
+// lazily).
+//
+// NOTE: 64 is an empirically-chosen safety margin, not a value derived from
+// any documented TBB guarantee. The linked Intel forum thread describing why
+// TBB does this is no longer reachable, and the TBB 2020.3 source itself does
+// not make the root cause obvious either -- we only have direct evidence that
+// the overflow happens and roughly how often, not a full explanation of why.
+// If you're debugging a related failure, don't expect to find a precise
+// "TBB spawns at most N extra threads" answer here or in TBB's source; 64 was
+// picked generously because padding this pointer-only array costs almost
+// nothing, not because it's a proven upper bound.
+//
+// scene_rdl2's tests/lib/render/util/TestMemPool.cc hits this same TBB
+// overflow-thread behavior (there sized as hardware_concurrency() + 4) --
+// see that file for the analogous workaround on the test side.
+#define MAX_OVERFLOW_POOL_SIZE      64
 
 // Mimic depth first code flow in bundled mode by forcing all queue sizes to 1.
 // The will ensure that as soon as an entry is added, the queue will get flushed,

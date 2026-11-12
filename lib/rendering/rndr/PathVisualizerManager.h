@@ -98,7 +98,7 @@ public:
 
     void turnOn();
     void turnOff();
-    void setInitialCameraXform(const scene_rdl2::rdl2::Mat4d& xform);
+    void setRecorderCameraXform(const scene_rdl2::rdl2::Mat4d& xform);
     void setCachedCameraXform(const scene_rdl2::rdl2::Mat4d& xform);
     void setCameraXformWasCached(bool cached);
 
@@ -139,7 +139,7 @@ public:
 
     scene_rdl2::math::Vec2i getPixel() const;
 
-    scene_rdl2::math::Mat4d getInitialCameraXform() const;
+    scene_rdl2::math::Mat4d getRecorderCameraXform() const;
     scene_rdl2::math::Mat4d getCachedCameraXform() const;
     bool getCameraXformWasCached() const;
 
@@ -254,7 +254,7 @@ public:
 
 private:
     void parserConfigure();
-    std::string showInitialCameraXform() const;
+    std::string showRecorderCameraXform() const;
 
     //------------------------------
 
@@ -279,9 +279,9 @@ private:
     // Has the user turned the visualizer on?
     bool mOn;
 
-    // Store the initial camera xform, since all path visualizer simulations
-    // should be done with respect to the initial camera position
-    scene_rdl2::rdl2::Mat4d mInitialCameraXform;
+    // Store the camera xform to use during simulation rendering,
+    // when recording path visualizer information
+    scene_rdl2::rdl2::Mat4d mRecorderCameraXform;
 
     // The cached navigation camera xform, which is stored when 
     // a simulation is started. This is used to restore the navigation

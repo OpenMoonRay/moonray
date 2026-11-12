@@ -1523,6 +1523,7 @@ public:
              const ispc::RampInterpolatorMode* rampInterpolators,
              const scene_rdl2::math::Color* rampColors,
              bool extendRamp,
+             int version = 1,
              const Iridescence* const iridescence = nullptr) :
                  BsdfComponent(iridescence),
                  mN(N),
@@ -1532,7 +1533,8 @@ public:
                  mRampPositions(rampPositions),
                  mRampInterpolators(rampInterpolators),
                  mRampColors(rampColors),
-                 mExtendRamp(extendRamp)
+                 mExtendRamp(extendRamp),
+                 mVersion(version)
     {}
 
     ~ToonBRDF() override {}
@@ -1545,6 +1547,7 @@ public:
     finline const ispc::RampInterpolatorMode* getRampInterpolators() const { return mRampInterpolators; }
     finline const scene_rdl2::math::Color* getRampColors()  const { return mRampColors; }
     finline bool getExtendRamp()                            const { return mExtendRamp; }
+    finline int  getVersion()                               const { return mVersion; }
 
 private:
     scene_rdl2::math::Vec3f mN;
@@ -1555,6 +1558,7 @@ private:
     const ispc::RampInterpolatorMode* mRampInterpolators;
     const scene_rdl2::math::Color* mRampColors;
     bool mExtendRamp;
+    int mVersion;  // 1 = legacy 1/(2*pi) norm ("ramp"), 2 = fixed 1/pi norm ("ramp_v2")
 };
 
 class HairToonSpecularBRDF : public BsdfComponent
@@ -1576,7 +1580,9 @@ public:
                          const float* rampValues,
                          bool enableIndirectReflections,
                          float indirectReflectionsIntensity,
-                         float indirectReflectionsRoughness) :
+                         float indirectReflectionsRoughness,
+                         const Iridescence* const iridescence = nullptr) :
+        BsdfComponent(iridescence),
         mN(N),
         mHairDir(hairDir),
         mHairUV(hairUV),
@@ -1663,7 +1669,9 @@ public:
             const scene_rdl2::math::Vec3f& dPdt,
             bool enableIndirectReflections,
             float indirectReflectionsIntensity,
-            float indirectReflectionsRoughness) :
+            float indirectReflectionsRoughness,
+            const Iridescence* const iridescence = nullptr) :
+        BsdfComponent(iridescence),
         mN(N),
         mIntensity(intensity),
         mFresnelBlend(fresnelBlend),

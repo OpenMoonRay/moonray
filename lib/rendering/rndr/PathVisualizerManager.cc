@@ -19,7 +19,7 @@ PathVisualizerManager::PathVisualizerManager(RenderContext* renderContext)
       mScene(nullptr), 
       mRenderContext(renderContext), 
       mOn(false),
-      mInitialCameraXform(), 
+      mRecorderCameraXform(), 
       mCachedCameraXform(), 
       mCameraXformWasCached(false)
 {
@@ -43,9 +43,11 @@ void PathVisualizerManager::initialize(const scene_rdl2::rdl2::SceneVariables& v
     pbr::PathVisualizerParams* params = mParams.get();
     params->setPixelRange(0, 0, width - 1, height - 1);
     mPathVisualizer->initialize(width, height, params);
-    
+
     mScene = scene;
     mScene->setPathVisualizer(mPathVisualizer.get());
+
+    mRecorderCameraXform = mRenderContext->getCamera()->get(scene_rdl2::rdl2::Node::sNodeXformKey);
 }
 
 /// ----------------------------------------------------------------------
@@ -223,9 +225,9 @@ void PathVisualizerManager::turnOff()
     mPathVisualizer->resetLines();
 }
 
-void PathVisualizerManager::setInitialCameraXform(const scene_rdl2::math::Mat4d& xform)
+void PathVisualizerManager::setRecorderCameraXform(const scene_rdl2::math::Mat4d& xform)
 {
-    mInitialCameraXform = xform;
+    mRecorderCameraXform = xform;
 }
 
 void PathVisualizerManager::setCachedCameraXform(const scene_rdl2::math::Mat4d& xform)
@@ -337,9 +339,9 @@ scene_rdl2::math::Vec2i PathVisualizerManager::getPixel() const
 }
 
 scene_rdl2::math::Mat4d 
-PathVisualizerManager::getInitialCameraXform() const
+PathVisualizerManager::getRecorderCameraXform() const
 {
-    return mInitialCameraXform;
+    return mRecorderCameraXform;
 }
 
 scene_rdl2::math::Mat4d 
@@ -462,17 +464,20 @@ uint32_t PathVisualizerManager::getSelectedNode() const { return mSelectedNode; 
 void PathVisualizerManager::setPixelX(uint32_t px, bool update)
 {
     mParams->mPixelX = px;
+    mRecorderCameraXform = mRenderContext->getCamera()->get(scene_rdl2::rdl2::Node::sNodeXformKey);
     if (update) { startSimulation(); }
 }
 void PathVisualizerManager::setPixelY(uint32_t py, bool update)
 {
     mParams->mPixelY = py;
+    mRecorderCameraXform = mRenderContext->getCamera()->get(scene_rdl2::rdl2::Node::sNodeXformKey);
     if (update) { startSimulation(); }
 }
 void PathVisualizerManager::setPixel(uint32_t px, uint32_t py, bool update)
 {
     mParams->mPixelX = px;
     mParams->mPixelY = py;
+    mRecorderCameraXform = mRenderContext->getCamera()->get(scene_rdl2::rdl2::Node::sNodeXformKey);
     if (update) { startSimulation(); }
 }
 void PathVisualizerManager::setMaxDepth(int depth, bool update)
@@ -649,12 +654,15 @@ PathVisualizerManager::parserConfigure()
                 [&](Arg& arg) { return mPathVisualizer->getParser().main(arg.childArg()); });
     mParser.opt("param", "...command...", "parameters",
                 [&](Arg& arg) { return mParams->getParser().main(arg.childArg()); });
-    mParser.opt("showInitCamXform", "", "show initialCameraXform",
-                [&](Arg& arg) { return arg.msg(showInitialCameraXform() + '\n'); });
+    // Ideally, we would update the debug console command name to showRecorderCamXform,
+    // but we are intentionally keeping it for now so that the arras path visualizer
+    // can still operate until we can make the appropriate changes in arras.
+    mParser.opt("showInitCamXform", "", "show recorderCameraXform",
+                [&](Arg& arg) { return arg.msg(showRecorderCameraXform() + '\n'); });
 }
 
 std::string
-PathVisualizerManager::showInitialCameraXform() const
+PathVisualizerManager::showRecorderCameraXform() const
 {
     auto showMtx = [](const scene_rdl2::rdl2::Mat4d& mtx) {
         auto showF = [](const float f) {
@@ -671,8 +679,8 @@ PathVisualizerManager::showInitialCameraXform() const
     };
 
     std::ostringstream ostr;
-    ostr << "mInitialCameraXform {\n"
-         << scene_rdl2::str_util::addIndent(showMtx(mInitialCameraXform)) + '\n'
+    ostr << "mRecorderCameraXform {\n"
+         << scene_rdl2::str_util::addIndent(showMtx(mRecorderCameraXform)) + '\n'
          << "}";
     return ostr.str();
 }

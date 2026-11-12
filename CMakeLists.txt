@@ -16,9 +16,8 @@ string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 list(APPEND CMAKE_MESSAGE_CONTEXT ${PROJECT_NAME})
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-include(MoonrayCheckFeature)
-
 include(OMR_Platform)
+include(MoonrayCheckFeature)
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
@@ -65,7 +64,8 @@ if(MOONRAY_USE_OPTIX)
     if(CMAKE_CUDA_COMPILER)
         enable_language(CUDA)
     else()
-        message(STATUS "No CUDA support")
+        message(FATAL_ERROR
+            "MOONRAY_USE_OPTIX requires a supported CUDA compiler")
     endif()
     find_package(CUDAToolkit REQUIRED) # built-in
     find_package(OptiX REQUIRED)
@@ -92,10 +92,6 @@ if(${Amorphous_FOUND})
     set(${PROJECT_NAME_UPPER}_BUILD_AMORPHOUS_VOLUME YES)
 endif()
 
-if(NOT IsDarwinPlatform)
-    find_package(Libatomic REQUIRED)
-endif()
-
 find_package(ZLIB REQUIRED)
 find_package(IlmBase QUIET)
 find_package(Imath QUIET)
@@ -104,7 +100,10 @@ if("${PROJECT_NAME}" STREQUAL "${CMAKE_PROJECT_NAME}")
     find_package(SceneRdl2 REQUIRED)
     find_package(McrtDenoise REQUIRED)
 endif()
-find_package(OpenEXR REQUIRED)
+find_package(OpenEXR CONFIG QUIET)
+if(NOT OpenEXR_FOUND)
+    find_package(OpenEXR MODULE REQUIRED)
+endif()
 if(TARGET OpenEXR::IlmImfUtil)
     set(OPENEXRUTIL OpenEXR::IlmImfUtil)
     set(OPENEXRIEX IlmBase::Iex)
@@ -245,4 +244,3 @@ install(
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}-${PROJECT_VERSION}
 )
-

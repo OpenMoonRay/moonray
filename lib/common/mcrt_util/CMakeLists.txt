@@ -45,6 +45,13 @@ target_link_libraries(${component}
         Random123::Random123
 )
 
+omr_target_link_atomic(${component} PUBLIC)
+
+if(NOT MOONRAY_HAS_LOCK_FREE_16BYTE_ATOMICS)
+    target_compile_definitions(${component}
+        PUBLIC NO_16BYTE_ATOMIC_LOCK_FREE)
+endif()
+
 # If at Dreamworks add a SConscript stub file so others can use this library.
 SConscript_Stub(${component})
 

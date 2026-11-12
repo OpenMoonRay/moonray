@@ -134,8 +134,20 @@ attenuateLobeHair(
         uniform Arena * uniform arena,
         varying BsdfLobe * const uniform lobe)
 {
-    BsdfLobe_setFresnel(lobe, me->mOneMinusFresnel);
-    return lobe;
+    if (BsdfLobe_getIsHair(lobe)) {
+        BsdfLobe_setFresnel(lobe, me->mOneMinusFresnel);
+        return lobe;
+    } else {
+        if (me->mOneMinusFresnel == nullptr)
+            return lobe;
+
+        varying BsdfLobe * uniform under = (varying BsdfLobe * uniform)
+            Arena_alloc(arena, sizeof(varying UnderBsdfLobe));
+
+        UnderBsdfLobe_init((varying UnderBsdfLobe * uniform) under, lobe, me->mNormal, 0.0f, sWhite, 1.0f);
+        BsdfLobe_setFresnel(under, me->mOneMinusFresnel);
+        return under;
+    }
 }
 
 // Attenuate lobe under clearcoat
@@ -230,6 +242,7 @@ void
 HairAttenuator_init(
         varying HairAttenuator * uniform me,
         uniform Arena * uniform arena,
+        const varying Vec3f& N,
         const varying Fresnel * uniform fresnel)
 {
     varying OneMinusFresnel * uniform omFresnel = 0;
@@ -240,9 +253,8 @@ HairAttenuator_init(
         OneMinusFresnel_init(omFresnel, fresnel);
     }
 
-    const varying Vec3f unusedVec = Vec3f_ctor(0.f, 0.f, 1.f);
     LobeAttenuator_init((varying LobeAttenuator * uniform) me,
-                        unusedVec,
+                        N,
                         (const varying Fresnel * uniform) omFresnel,
                         (uniform intptr_t) (void*) attenuateLobeHair,       // custom atten fn
                         (uniform intptr_t) (void*) attenuateBssrdfSimple,   // standard atten fn

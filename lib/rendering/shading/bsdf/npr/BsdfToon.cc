@@ -392,7 +392,14 @@ ToonBsdfLobe::eval(const BsdfSlice &slice,
     float cosThetaWi = dot(N, wi);
 
     if (pdf != NULL) {
-        *pdf = max(cosThetaWi, 0.0f) * sOneOverPi;
+        // Use sEpsilon as the floor rather than 0 for shadow-side directions
+        // (cosThetaWi <= 0).  A zero pdf would cause isSampleInvalid() to
+        // discard the light sample entirely, suppressing the shadow-zone ramp
+        // contribution added in MOONSHINE-2049.  This lobe never
+        // importance-samples the back hemisphere, so a near-zero positive pdf
+        // is semantically correct: it gives the light sample near-unity MIS
+        // weight for those directions, which is the desired behavior.
+        *pdf = max(cosThetaWi, sEpsilon) * sOneOverPi;
     }
 
     // Note: we assume this lobe has been setup with a OneMinus*Fresnel
@@ -411,12 +418,15 @@ ToonBsdfLobe::eval(const BsdfSlice &slice,
     // Soften hard shadow terminator due to shading normals
     const float Gs = slice.computeShadowTerminatorFix(N, wi);
 
-    // We use the upper bound of 1/2pi as the normalization factor
+    // We use the upper bound of 1/pi as the normalization factor
     // for the maximum possible toon step function
     // TODO: a more accurate normalization factor for the varying
     // step can be computed if so desired.
+    // Legacy "ramp" model used 1/(2*pi) due to a bug; "ramp_v2" uses the
+    // corrected 1/pi (MOONSHINE-2051).
+    const float norm = (mVersion == 1) ? sOneOverTwoPi : sOneOverPi;
     Color result = Gs * albedo *
-                   computeScaleAndFresnel(cosThetaWo) * sOneOverTwoPi;
+                   computeScaleAndFresnel(cosThetaWo) * norm;
     return result;
 }
 
