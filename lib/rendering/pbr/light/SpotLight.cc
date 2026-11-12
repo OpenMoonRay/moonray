@@ -84,7 +84,7 @@ SpotLight::update(const Mat4d &world2render)
     const Mat4f local2Render0 = rot * toFloat(l2w0 * world2render);
     const Mat4f local2Render1 = rot * toFloat(l2w1 * world2render);
 
-    // Aspect ratio is local y-dimension divided by local x-dimension; mRcpAspectRatio is its reciprocal
+    // Aspect ratio is local x-dimension divided by local y-dimension; mRcpAspectRatio is its reciprocal
     mRcpAspectRatio = 1.0f / mRdlLight->get<scene_rdl2::rdl2::Float>(sAspectRatioKey);
 
     mLensRadius  = mRdlLight->get<scene_rdl2::rdl2::Float>(sLensRadiusKey);
