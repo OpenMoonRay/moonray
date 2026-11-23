@@ -28,40 +28,44 @@ RDL2_DSO_ATTR_DEFINE(rdl2::Light)
         "surface area. When set to false, the radiance is used as-is, regardless of surface area.");
 
     attrApplySceneScale = sceneClass.declareAttribute<rdl2::Bool>("apply_scene_scale", true);
-    sceneClass.setMetadata(attrApplySceneScale, "comment", "apply scene scale variable when normalized");
     sceneClass.setMetadata(attrApplySceneScale, rdl2::SceneClass::sComment,
-        "Whether to apply scene scale variable when normalized.");
+        "Only used when normalized is true. When set to true, the normalized radiance is also divided by "
+        "pi * scene_scale * scene_scale, where scene_scale is the SceneVariables attribute. ");
 
     attrLensRadius = sceneClass.declareAttribute<rdl2::Float>("lens_radius", 1.0f, { "lens radius" });
     sceneClass.setMetadata(attrLensRadius, "label", "lens radius");
     sceneClass.setMetadata(attrLensRadius, rdl2::SceneClass::sComment,
-        "The radius of the SpotLight's lens (when the aspect ratio is 1.0, so that the lens is circular).");
+        "The radius of the SpotLight's lens along its local x axis. The radius along its local y axis is "
+        "lens_radius / aspect_ratio.");
 
     attrAspectRatio = sceneClass.declareAttribute<rdl2::Float>("aspect_ratio", 1.0f, { "aspect ratio" });
     sceneClass.setMetadata(attrAspectRatio, "label", "aspect ratio");
     sceneClass.setMetadata(attrAspectRatio, rdl2::SceneClass::sComment,
-        "The aspect ratio of the lens - its local y dimension divided by its local x dimension. "
+        "The aspect ratio of the lens - its local x dimension divided by its local y dimension. "
         "Values other than 1.0 will give the lens a non-circular elliptical shape.");
 
     attrFocalPlaneDistance = sceneClass.declareAttribute<rdl2::Float>("focal_plane_distance", 1.0e10f, { "focal plane distance" });
     sceneClass.setMetadata(attrFocalPlaneDistance, "label", "focal plane distance");
     sceneClass.setMetadata(attrFocalPlaneDistance, rdl2::SceneClass::sComment,
         "The distance from the SpotLight's position, measured in the direction the light is pointing, at which "
-        "the projected image will be in focus.");
+        "the projected image will be in focus. The default is effectively infinite, so the projection is "
+        "blurred unless lens_radius is very small. To project a sharp texture, set this to the distance from "
+        "the light to the surface being lit.");
 
     attrOuterConeAngle = sceneClass.declareAttribute<rdl2::Float>("outer_cone_angle", 60.0f, { "outer cone angle" });
     sceneClass.setMetadata(attrOuterConeAngle, "label", "outer cone angle");
     sceneClass.setMetadata(attrOuterConeAngle, rdl2::SceneClass::sComment,
-        "The apex angle of the bounding cone of the light emitted by the SpotLight. No illumination takes place"
-        "outside this angle. This is a full angle, measured from one side to the other. "
+        "The apex angle, in degrees, of the bounding cone of the light emitted by the SpotLight. No illumination "
+        "takes place outside this angle. This is a full angle, measured from one side to the other. "
         "There is a falloff function applied between the outer and inner cones - "
         "see the angle_falloff_type attribute.");
 
     attrInnerConeAngle = sceneClass.declareAttribute<rdl2::Float>("inner_cone_angle", 30.0f, { "inner cone angle" });
     sceneClass.setMetadata(attrInnerConeAngle, "label", "inner cone angle");
     sceneClass.setMetadata(attrInnerConeAngle, rdl2::SceneClass::sComment,
-        "The apex angle of the bright inner cone of the light emitted by the SpotLight. Full illumination takes "
-        "place inside this region. This is a full angle, measured from one side to the other. "
+        "The apex angle, in degrees, of the bright inner cone of the light emitted by the SpotLight. Full "
+        "illumination takes place inside this region. This is a full angle, measured from one side to the other. "
+        "Values greater than outer_cone_angle are clamped to outer_cone_angle. "
         "There is a falloff function applied between the outer and inner cones - "
         "see the angle_falloff_type attribute.");
 
@@ -88,9 +92,10 @@ RDL2_DSO_ATTR_DEFINE(rdl2::Light)
     attrBlackLevel         = sceneClass.declareAttribute<rdl2::Float>("black_level", 0.001f, { "black level" });
     sceneClass.setMetadata(attrBlackLevel, "label", "black level");
     sceneClass.setMetadata(attrBlackLevel, rdl2::SceneClass::sComment,
-        "The radiance used for rendering the SpotLight lens as seen through the camera via a primary ray, when "
-        "the true computed radiance would otherwise be black. This is simply a convenience feature to make the "
-        "SpotLight lens visible in the camera view.");
+        "The brightness of the SpotLight lens as seen through the camera via a primary ray, when the true "
+        "computed radiance would otherwise be black, as a fraction of the light's radiance. This is simply a "
+        "convenience feature to make the SpotLight lens visible in the camera view, and has no effect on how "
+        "the light illuminates the scene.");
 
     DECLARE_ATTRS_CLEAR_RADIUS
 
